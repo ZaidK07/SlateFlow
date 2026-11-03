@@ -1,6 +1,7 @@
 package com.zaid01.slateflow
 
 import android.app.Activity
+import androidx.core.net.toUri
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,6 +11,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,6 +51,10 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::open) }
     val open = { picker.launch(arrayOf("application/pdf", "text/*", "application/octet-stream")) }
     BackHandler(document != null || showSettings) { if (showSettings) showSettings = false else if (focused) focused = false else model.home() }
+    if (showSettings) {
+        SettingsPage(settings, model::update) { showSettings = false }
+        return
+    }
     Scaffold(
         topBar = {
             AnimatedVisibility(visible = !focused, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
@@ -57,7 +65,9 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                 }
             }, navigationIcon = { if (document != null) TextButton(onClick = model::home) { Text("Back") } }, actions = {
                 if (document != null) TextButton(onClick = { focused = true }) { Text("Focus") }
-                TextButton(onClick = { showSettings = true }) { Text("Settings") }
+                IconButton(onClick = { showSettings = true }) {
+                    Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings")
+                }
             }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
             }
         }, floatingActionButton = {
@@ -85,7 +95,7 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                         val last = recent.firstOrNull()
                         if (last != null) {
                             Text("PICK UP WHERE YOU LEFT OFF", Modifier.padding(top = 24.dp, bottom = 16.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                            Card(onClick = { model.open(android.net.Uri.parse(last.uri)) }, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                            Card(onClick = { model.open(last.uri.toUri()) }, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                                 Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Text(if (last.kind == "pdf") "PDF DOCUMENT" else "MARKDOWN", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                     Text(last.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -106,9 +116,9 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                                 Text("Open a PDF or Markdown file.\nWe’ll keep your place for next time.", Modifier.padding(top = 8.dp, bottom = 96.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         } else if (compact) LazyColumn(contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(visible, key = { it.uri }) { doc -> DocumentCard(doc) { model.open(android.net.Uri.parse(doc.uri)) } }
+                            items(visible, key = { it.uri }) { doc -> DocumentCard(doc) { model.open(doc.uri.toUri()) } }
                         } else LazyVerticalGrid(columns = GridCells.Adaptive(240.dp), contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            items(visible, key = { it.uri }) { doc -> DocumentCard(doc) { model.open(android.net.Uri.parse(doc.uri)) } }
+                            items(visible, key = { it.uri }) { doc -> DocumentCard(doc) { model.open(doc.uri.toUri()) } }
                         }
                     }
                 }
@@ -116,29 +126,74 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
             if (focused && document != null) FilledTonalButton(onClick = { focused = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { Text("Show controls") }
         }
     }
-    if (showSettings) ModalBottomSheet(onDismissRequest = { showSettings = false }, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Make it yours", style = MaterialTheme.typography.headlineSmall)
-            Text("Quiet colors. Comfortable reading.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("Use Android theme colors"); Text(if (settings.dynamic) "Your system palette" else "SlateFlow Signature Blue", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Switch(checked = settings.dynamic, onCheckedChange = { model.update(settings.copy(dynamic = it)) })
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            SettingSlider("Markdown side margins", "${settings.margin.roundToInt()} dp", settings.margin, 16f..160f) { model.update(settings.copy(margin = it)) }
-            SettingSlider("Text size", "${settings.font.roundToInt()} sp", settings.font, 14f..28f) { model.update(settings.copy(font = it)) }
-            SettingSlider("Line spacing", "%.2f×".format(settings.spacing), settings.spacing, 1.15f..1.8f) { model.update(settings.copy(spacing = it)) }
-            Text("Reading positions are saved automatically as you scroll.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
     if (error != null) AlertDialog(onDismissRequest = { model.error.value = null }, title = { Text("Couldn’t open file") }, text = { Text(error!!) }, confirmButton = { TextButton(onClick = { model.error.value = null }) { Text("Got it") } })
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingSlider(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>, change: (Float) -> Unit) {
+private fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, back: () -> Unit) {
+    Scaffold(topBar = {
+        TopAppBar(title = { Text("Settings", fontWeight = FontWeight.SemiBold) }, navigationIcon = {
+            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_back), contentDescription = "Back") }
+        }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
+    }) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Your reading space", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                    Text("A few small adjustments. A more comfortable read.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                SettingsGroup("Appearance", "Quiet surfaces and a palette that feels like you.") {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Android theme colors", style = MaterialTheme.typography.titleMedium)
+                            Text("Use the accent colors from your system wallpaper.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = settings.dynamic, onCheckedChange = { update(settings.copy(dynamic = it)) })
+                    }
+                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Text(if (settings.dynamic) "System palette is active" else "Signature Blue · SlateFlow’s cool, soothing palette", Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                }
+                SettingsGroup("Markdown", "Set the spacing and typography for your documents.") {
+                    SettingSlider("Side margins", "dp", settings.margin, 16f..160f) { update(settings.copy(margin = it)) }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingSlider("Text size", "sp", settings.font, 14f..28f) { update(settings.copy(font = it)) }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingSlider("Line spacing", "×", settings.spacing, 1.15f..1.8f) { update(settings.copy(spacing = it)) }
+                    Text("Margins adapt to smaller windows so the text stays readable. Your place follows the text when these settings change.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { update(settings.copy(margin = 32f, font = 18f, spacing = 1.45f)) }) { Text("Reset reading defaults") }
+                }
+                SettingsGroup("Reading memory", "Pick up where you left off.") {
+                    Text("Your position is saved while you scroll, when you stop, and when you leave the reader.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Files stay on your device. SlateFlow uses the access you grant in the Android file picker.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("SlateFlow  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroup(title: String, description: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+        }
+    }
+}
+
+@Composable
+private fun SettingSlider(label: String, unit: String, value: Float, range: ClosedFloatingPointRange<Float>, change: (Float) -> Unit) {
+    var sliderValue by remember(value) { mutableFloatStateOf(value) }
     Column {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label); Text(valueLabel, color = MaterialTheme.colorScheme.primary) }
-        Slider(value = value, onValueChange = change, valueRange = range)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(if (unit == "×") "%.2f×".format(sliderValue) else "${sliderValue.roundToInt()} $unit", color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(value = sliderValue, onValueChange = { sliderValue = it }, onValueChangeFinished = { change(sliderValue) }, valueRange = range)
     }
 }
 

@@ -1,6 +1,7 @@
 package com.zaid01.slateflow.reader
 
 import android.net.Uri
+import androidx.core.net.toUri
 import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
@@ -52,7 +53,7 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
         val lock = Any()
         scope.launch {
             try {
-                val pdf = PdfEngine(context, Uri.parse(doc.uri))
+                val pdf = PdfEngine(context, doc.uri.toUri())
                 synchronized(lock) { if (disposed) pdf.close() else opened = pdf }
                 withContext(Dispatchers.Main) { if (!disposed) engine = pdf }
             } catch (e: Exception) { withContext(Dispatchers.Main) { if (!disposed) failure = "Could not open this PDF. It may be encrypted, damaged, or no longer accessible." } }
@@ -198,7 +199,7 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
         try {
             rendered = withContext(Dispatchers.Default) {
                 val source = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(Uri.parse(doc.uri))?.buffered()?.use { stream ->
+                    context.contentResolver.openInputStream(doc.uri.toUri())?.buffered()?.use { stream ->
                         val bytes = stream.readNBytes(12 * 1024 * 1024 + 1)
                         require(bytes.size <= 12 * 1024 * 1024) { "This Markdown file exceeds the 12 MB reading limit." }
                         bytes.toString(Charsets.UTF_8)
