@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.doOnLayout
 import com.zaid01.slateflow.data.*
 import io.noties.markwon.Markwon
 import io.noties.markwon.AbstractMarkwonPlugin
@@ -147,11 +146,11 @@ private fun PdfPage(engine: PdfEngine, index: Int, modifier: Modifier, ready: ()
     }
 }
 
-private class MarkdownScroll(context: android.content.Context) : ScrollView(context) {
+internal class MarkdownScroll(context: android.content.Context) : ScrollView(context) {
     var anchor = 0
     var lineFraction = 0f
     var restored = false
-    var applying = false
+    var applying = true
     var onPosition: ((ReadingPosition) -> Unit)? = null
     val text = TextView(context).apply { setTextIsSelectable(true); setPadding(0, 0, 0, 32) }
     init {
@@ -167,17 +166,26 @@ private class MarkdownScroll(context: android.content.Context) : ScrollView(cont
                 onPosition?.invoke(ReadingPosition(anchor, y - top, lineFraction, y.toFloat() / (text.height - height).coerceAtLeast(1)))
             }
         }
-        text.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> restoreAnchor() }
+        isFocusableInTouchMode = true
+        requestFocus()
     }
-    fun restoreAnchor() {
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        applying = true
+        super.onLayout(changed, left, top, right, bottom)
+        restoreAnchor()
+        postOnAnimation { restored = true; applying = false }
+    }
+    override fun onDetachedFromWindow() {
+        onPosition = null
+        applying = true
+        super.onDetachedFromWindow()
+    }
+    private fun restoreAnchor() {
         val layout = text.layout ?: return
         if (width == 0) return
-        applying = true
         val line = layout.getLineForOffset(anchor.coerceIn(0, text.length()))
         val top = layout.getLineTop(line)
         scrollTo(0, top + (lineFraction * (layout.getLineBottom(line) - top)).roundToInt())
-        restored = true
-        applying = false
     }
 }
 
@@ -227,7 +235,6 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
                 scroll.text.textSize = settings.font
                 scroll.text.setLineSpacing(0f, settings.spacing)
                 if (scroll.text.text !== rendered) markwon.setParsedMarkdown(scroll.text, rendered as android.text.Spanned)
-                scroll.text.doOnLayout { scroll.restoreAnchor() }
             })
         }
     }
