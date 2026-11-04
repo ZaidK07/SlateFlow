@@ -6,7 +6,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Rule
 import org.junit.Test
 
@@ -16,6 +18,13 @@ class SettingsNavigationTest {
     @Test fun dashboardAndExploreTabsNavigateWithoutTheOldSidebar() {
         compose.onAllNodesWithText("Explore").onLast().performClick()
         compose.onNodeWithText("Your folders").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Explore display options").performClick()
+        compose.onNodeWithText("Explore display").assertIsDisplayed()
+        compose.onAllNodesWithText("Folder path").onFirst().assertIsDisplayed()
+        compose.onNodeWithText("Document size").assertIsDisplayed()
+        compose.onNodeWithText("Largest first").performScrollTo().performClick()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitForIdle()
         compose.onAllNodesWithText("Dashboard").onLast().performClick()
         compose.onNodeWithText("Reading history").assertIsDisplayed()
         compose.onNodeWithContentDescription("Customize dashboard").performClick()

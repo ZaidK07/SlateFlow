@@ -17,6 +17,7 @@ internal data class FolderEntry(
     val kind: String? = null,
     val modifiedAt: Long = 0,
     val size: Long = 0,
+    val sizeKnown: Boolean = true,
 )
 internal data class FolderSummary(val folders: Int = 0, val pdfs: Int = 0, val markdown: Int = 0) {
     val label: String get() = buildList {
@@ -26,7 +27,7 @@ internal data class FolderSummary(val folders: Int = 0, val pdfs: Int = 0, val m
     }.ifEmpty { listOf("No PDF or Markdown files") }.joinToString(" · ")
 }
 
-/** Uses one provider query per directory; does not walk the entire storage tree. */
+/** Reads one directory per provider query; recursive discovery is owned by FolderScanner. */
 internal class FolderRepository(private val resolver: ContentResolver) {
     suspend fun root(uri: Uri): FolderLocation = withContext(Dispatchers.IO) {
         val document = DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
@@ -36,7 +37,7 @@ internal class FolderRepository(private val resolver: ContentResolver) {
         FolderLocation(document.toString(), name)
     }
 
-    suspend fun children(location: FolderLocation): List<FolderEntry> = withContext(Dispatchers.IO) {
+    suspend fun children(location: FolderLocation, sort: Boolean = true): List<FolderEntry> = withContext(Dispatchers.IO) {
         val parent = Uri.parse(location.uri)
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
         val columns = arrayOf(
@@ -60,17 +61,18 @@ internal class FolderRepository(private val resolver: ContentResolver) {
                     entries += FolderEntry(
                         uri = DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString(),
                         name = name, isFolder = folder, kind = kind,
-                        modifiedAt = cursor.getLong(3), size = cursor.getLong(4),
+                        modifiedAt = cursor.getLong(3), size = cursor.getLong(4), sizeKnown = !cursor.isNull(4),
                     )
                 }
             }
         } ?: error("Could not read this folder. Check its access permission and try again.")
+        if (!sort) return@withContext entries
         entries.sortedWith(compareByDescending<FolderEntry> { it.isFolder }.thenBy { it.name.lowercase(Locale.ROOT) })
     }
 
     suspend fun summary(location: FolderLocation): FolderSummary {
         val entries = children(location)
-        return FolderSummary(entries.count { it.isFolder }, entries.count { it.kind == "pdf" }, entries.count { it.kind == "md" })
+        return FolderSummary(entries.count { it.isFolder }, entries.count { !it.isFolder && it.kind == "pdf" }, entries.count { !it.isFolder && it.kind == "md" })
     }
 }
 

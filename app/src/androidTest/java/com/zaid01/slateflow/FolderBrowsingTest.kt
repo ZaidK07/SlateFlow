@@ -4,6 +4,9 @@ import android.provider.DocumentsContract
 import androidx.test.platform.app.InstrumentationRegistry
 import com.zaid01.slateflow.explore.FolderLocation
 import com.zaid01.slateflow.explore.FolderRepository
+import com.zaid01.slateflow.explore.FolderScanner
+import com.zaid01.slateflow.explore.ScanRoot
+import com.zaid01.slateflow.data.DocumentIdentity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -24,6 +27,18 @@ class FolderBrowsingTest {
         assertEquals(1, summary.pdfs)
         assertEquals(1, summary.markdown)
         assertTrue(children.all { DocumentsContract.isTreeUri(android.net.Uri.parse(it.uri)) })
+    }
+
+    @Test fun recursiveScanFindsNestedDocumentFoldersUsingProviderMetadata() = runBlocking {
+        val source = repository
+        val root = source.root(tree)
+        val scanner = FolderScanner({ source.children(it, sort = false) }, { DocumentIdentity.key(android.net.Uri.parse(it)) })
+        val result = scanner.scan(listOf(ScanRoot(tree.toString(), root)))
+        assertEquals(listOf("Reading", "Reading/Notes"), result.folders.map { it.displayPath })
+        assertEquals(3, result.visited)
+        assertEquals(320L, result.folders.first().documentBytes)
+        assertEquals(80L, result.folders.last().documentBytes)
+        assertEquals(0, result.skipped)
     }
 
     @Test fun nestedAndEmptyFoldersHaveIndependentContents() = runBlocking {
