@@ -1,144 +1,130 @@
 package com.zaid01.slateflow
 
 import android.app.Activity
-import androidx.core.net.toUri
-import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.windowsizeclass.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zaid01.slateflow.dashboard.DashboardScreen
 import com.zaid01.slateflow.data.*
+import com.zaid01.slateflow.explore.ExploreModel
+import com.zaid01.slateflow.explore.ExploreScreen
 import com.zaid01.slateflow.reader.DocumentReader
-import kotlin.math.roundToInt
+import com.zaid01.slateflow.ui.components.*
+
+private enum class HomeTab(val title: String, val icon: AppSymbol) {
+    DASHBOARD("Dashboard", AppSymbol.DASHBOARD), EXPLORE("Explore", AppSymbol.FOLDER)
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     val document by model.active.collectAsStateWithLifecycle()
-    val recent by model.recent.collectAsStateWithLifecycle()
+    val documents by model.recent.collectAsStateWithLifecycle()
     val loading by model.loading.collectAsStateWithLifecycle()
     val error by model.error.collectAsStateWithLifecycle()
+    val dashboard by model.dashboard.collectAsStateWithLifecycle()
+    val explorer: ExploreModel = viewModel()
+    val exploreState by explorer.state.collectAsStateWithLifecycle()
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var focused by rememberSaveable { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableStateOf(HomeTab.DASHBOARD) }
     LaunchedEffect(document?.uri) { focused = false }
-    var filter by rememberSaveable { mutableStateOf("All files") }
     val width = calculateWindowSizeClass(LocalContext.current as Activity).widthSizeClass
     val configuration = LocalConfiguration.current
+    val wide = width != WindowWidthSizeClass.Compact
     val expanded = width == WindowWidthSizeClass.Expanded && configuration.screenWidthDp > configuration.screenHeightDp
-    val compact = width == WindowWidthSizeClass.Compact
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::open) }
-    val open = { picker.launch(arrayOf("application/pdf", "text/*", "application/octet-stream")) }
-    BackHandler(document != null || showSettings) { if (showSettings) showSettings = false else if (focused) focused = false else model.home() }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { model.open(it) } }
+    val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(explorer::addRoot) }
+    val openFile = { picker.launch(arrayOf("application/pdf", "text/*", "application/octet-stream")) }
+    val addFolder = { treePicker.launch(null) }
+    BackHandler(document != null || showSettings || (tab == HomeTab.EXPLORE && exploreState.path.isNotEmpty())) {
+        when {
+            showSettings -> showSettings = false
+            focused -> focused = false
+            document != null -> model.home()
+            else -> explorer.back()
+        }
+    }
     if (showSettings) {
         SettingsPage(settings, model::update) { showSettings = false }
-        return
-    }
-    Scaffold(
-        topBar = {
-            AnimatedVisibility(visible = !focused, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
-            TopAppBar(title = {
-                Column {
-                    Text(document?.name ?: "SlateFlow", maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                    if (document == null) Text("A little space to get lost in a good read.", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Scaffold(
+            topBar = {
+                AnimatedVisibility(!focused, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(document?.name ?: "SlateFlow", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                                if (document == null) Text(tab.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        navigationIcon = {
+                            if (document != null) IconButton(onClick = model::home) { AppIcon(AppSymbol.BACK, "Back to ${tab.title}") }
+                        },
+                        actions = {
+                            if (document != null) TextButton(onClick = { focused = true }) { Text("Focus") }
+                            else if (wide) TextButton(onClick = openFile) { AppIcon(AppSymbol.ADD); Spacer(Modifier.width(8.dp)); Text("Open file") }
+                            IconButton(onClick = { showSettings = true }) { AppIcon(AppSymbol.SETTINGS, "Settings") }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    )
                 }
-            }, navigationIcon = { if (document != null) TextButton(onClick = model::home) { Text("Back") } }, actions = {
-                if (document != null) TextButton(onClick = { focused = true }) { Text("Focus") }
-                IconButton(onClick = { showSettings = true }) {
-                    Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings")
-                }
-            }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
-            }
-        }, floatingActionButton = {
-            if (document == null) ExtendedFloatingActionButton(onClick = open, shape = RoundedCornerShape(24.dp)) { Text("+  Open a file", fontWeight = FontWeight.SemiBold) }
-        }
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                document != null -> DocumentReader(document!!, settings, expanded, model)
-                else -> Row(Modifier.fillMaxSize()) {
-                    if (expanded) {
-                        Surface(Modifier.width(264.dp).fillMaxHeight().padding(start = 24.dp, bottom = 24.dp, top = 16.dp), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
-                            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("YOUR SPACE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                Text("Library", style = MaterialTheme.typography.headlineSmall)
-                                listOf("All files", "PDF", "Markdown").forEach { item -> FilterChip(selected = filter == item, onClick = { filter = item }, label = { Text(item) }, modifier = Modifier.fillMaxWidth()) }
-                                Spacer(Modifier.weight(1f))
-                                Text("Just you and the page.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Files stay on your device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                    Column(Modifier.weight(1f).padding(horizontal = if (compact) 24.dp else 32.dp)) {
-                        val last = recent.firstOrNull()
-                        if (last != null) {
-                            Text("PICK UP WHERE YOU LEFT OFF", Modifier.padding(top = 24.dp, bottom = 16.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                            Card(onClick = { model.open(last.uri.toUri()) }, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                                Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text(if (last.kind == "pdf") "PDF DOCUMENT" else "MARKDOWN", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                    Text(last.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                    LinearProgressIndicator(progress = { last.progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(4.dp), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
-                                    Text("${(last.progress * 100).roundToInt()}% read     ·     Continue reading →", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
-                            }
-                        }
-                        Text("Your library", Modifier.padding(top = 32.dp, bottom = 8.dp), style = MaterialTheme.typography.titleLarge)
-                        if (!expanded) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("All files", "PDF", "Markdown").forEach { item -> FilterChip(selected = filter == item, onClick = { filter = item }, label = { Text(item) }) }
-                        }
-                        val visible = recent.filter { filter == "All files" || (filter == "PDF" && it.kind == "pdf") || (filter == "Markdown" && it.kind == "md") }
-                        if (visible.isEmpty()) {
-                            Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                                Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Text("Aa", Modifier.padding(24.dp), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary) }
-                                Text(if (recent.isEmpty()) "Room for your next read" else "No ${filter.lowercase()} files yet", Modifier.padding(top = 24.dp), style = MaterialTheme.typography.titleLarge)
-                                Text("Open a PDF or Markdown file.\nWe’ll keep your place for next time.", Modifier.padding(top = 8.dp, bottom = 96.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        } else if (compact) LazyColumn(contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(visible, key = { it.uri }) { doc -> DocumentCard(doc) { model.open(doc.uri.toUri()) } }
-                        } else LazyVerticalGrid(columns = GridCells.Adaptive(240.dp), contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            items(visible, key = { it.uri }) { doc -> DocumentCard(doc) { model.open(doc.uri.toUri()) } }
-                        }
+            },
+            bottomBar = {
+                if (!wide && document == null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    HomeTab.entries.forEach { value ->
+                        NavigationBarItem(selected = tab == value, onClick = { tab = value }, icon = { AppIcon(value.icon) }, label = { Text(value.title) })
                     }
                 }
+            },
+            floatingActionButton = {
+                if (!wide && document == null && (tab == HomeTab.DASHBOARD || exploreState.roots.isNotEmpty())) {
+                    FloatingActionButton(onClick = if (tab == HomeTab.DASHBOARD) openFile else addFolder) {
+                        AppIcon(AppSymbol.ADD, if (tab == HomeTab.DASHBOARD) "Open a file" else "Add folder")
+                    }
+                }
+            },
+        ) { padding ->
+            Row(Modifier.fillMaxSize().padding(padding)) {
+                if (wide && document == null) NavigationRail(containerColor = MaterialTheme.colorScheme.background) {
+                    Spacer(Modifier.height(16.dp))
+                    HomeTab.entries.forEach { value ->
+                        NavigationRailItem(selected = tab == value, onClick = { tab = value }, icon = { AppIcon(value.icon) }, label = { Text(value.title) }, modifier = Modifier.padding(vertical = 4.dp))
+                    }
+                }
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    when {
+                        loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        document != null -> DocumentReader(document!!, settings, expanded, model)
+                        tab == HomeTab.DASHBOARD -> DashboardScreen(documents, dashboard, model::customize, { model.open(it.sourceUri.ifBlank { it.uri }.toUri()) }, openFile)
+                        else -> ExploreScreen(explorer, addFolder) { entry, folder -> model.open(entry.uri.toUri(), folder.name, folder.uri) }
+                    }
+                    if (focused && document != null) FilledTonalButton(onClick = { focused = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { Text("Show controls") }
+                }
             }
-            if (focused && document != null) FilledTonalButton(onClick = { focused = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { Text("Show controls") }
         }
     }
-    if (error != null) AlertDialog(onDismissRequest = { model.error.value = null }, title = { Text("Couldn’t open file") }, text = { Text(error!!) }, confirmButton = { TextButton(onClick = { model.error.value = null }) { Text("Got it") } })
-}
-
-@Composable
-private fun DocumentCard(doc: Document, open: () -> Unit) {
-    OutlinedCard(onClick = open, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (doc.kind == "pdf") "PDF" else "MD", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text("${(doc.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(doc.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(DateUtils.getRelativeTimeSpanString(doc.openedAt).toString(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    if (error != null) AlertDialog(
+        onDismissRequest = { model.error.value = null },
+        title = { Text("Something needs attention") }, text = { Text(error!!) },
+        confirmButton = { TextButton(onClick = { model.error.value = null }) { Text("Got it") } },
+    )
 }
