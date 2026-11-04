@@ -41,7 +41,7 @@ internal fun ExploreScreen(model: ExploreModel, addFolder: () -> Unit, open: (Fo
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(state.path.lastOrNull()?.name ?: "Your folders", style = MaterialTheme.typography.titleLarge)
-                        Text(if (state.path.isEmpty()) "PDFs and Markdown, organized where they live." else "${state.entries.count { it.isFolder }} folders · ${state.entries.count { !it.isFolder }} documents", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (state.path.isEmpty()) "PDFs and Markdown, organized where they live." else if (state.loading) "Reading folder contents…" else FolderSummary(state.entries.count { it.isFolder }, state.entries.count { it.kind == "pdf" }, state.entries.count { it.kind == "md" }).label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = model::refresh) { AppIcon(AppSymbol.REFRESH, "Refresh folders") }
                     FilledTonalIconButton(onClick = addFolder) { AppIcon(AppSymbol.ADD, "Add folder") }
@@ -58,7 +58,7 @@ internal fun ExploreScreen(model: ExploreModel, addFolder: () -> Unit, open: (Fo
                         search, { search = it }, modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Search this folder") }, leadingIcon = { AppIcon(AppSymbol.SEARCH) },
                         trailingIcon = { if (search.isNotEmpty()) TextButton(onClick = { search = "" }) { Text("Clear") } },
-                        shape = RoundedCornerShape(12.dp), singleLine = true,
+                        shape = RoundedCornerShape(12.dp), singleLine = true, colors = nexusFieldColors(),
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FileFilter.entries.forEach { type -> FilterChip(filter == type, { filter = type }, label = { Text(type.label) }) }

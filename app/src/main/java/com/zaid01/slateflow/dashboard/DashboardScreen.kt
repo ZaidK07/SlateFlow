@@ -54,7 +54,7 @@ internal fun DashboardScreen(
                     placeholder = { Text("Search your reading history") },
                     leadingIcon = { AppIcon(AppSymbol.SEARCH) },
                     trailingIcon = { if (search.isNotEmpty()) TextButton(onClick = { search = "" }) { Text("Clear") } },
-                    singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(),
+                    singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(), colors = nexusFieldColors(),
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FileFilter.entries.forEach { filter ->

@@ -96,9 +96,9 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                 }
             },
             floatingActionButton = {
-                if (!wide && document == null && (tab == HomeTab.DASHBOARD || exploreState.roots.isNotEmpty())) {
-                    FloatingActionButton(onClick = if (tab == HomeTab.DASHBOARD) openFile else addFolder) {
-                        AppIcon(AppSymbol.ADD, if (tab == HomeTab.DASHBOARD) "Open a file" else "Add folder")
+                if (!wide && document == null && tab == HomeTab.DASHBOARD) {
+                    FloatingActionButton(onClick = openFile) {
+                        AppIcon(AppSymbol.ADD, "Open a file")
                     }
                 }
             },
