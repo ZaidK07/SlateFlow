@@ -18,7 +18,8 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, back: () -> Unit) {
+fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, clearAppData: () -> Unit, back: () -> Unit) {
+    var confirmReset by remember { mutableStateOf(false) }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Settings", fontWeight = FontWeight.SemiBold) }, navigationIcon = {
             IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_back), contentDescription = "Back") }
@@ -64,10 +65,24 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, bac
                     Text("Your position is saved while you scroll, when you stop, and when you leave the reader.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Files stay on your device. SlateFlow uses the access you grant in the Android file picker.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("SlateFlow 1.1  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SettingsGroup("App data", "Clear SlateFlow and start fresh.") {
+                    Text("Remove reading history, saved positions, folder indexes, scan locations, and preferences.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = { confirmReset = true }, border = BorderStroke(1.dp, MaterialTheme.colorScheme.error), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Clear app data") }
+                }
+                Text("SlateFlow 1.2  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
+    if (confirmReset) AlertDialog(
+        onDismissRequest = { confirmReset = false },
+        title = { Text("Clear all app data?") },
+        text = { Text("This clears all reading history and positions, folder indexes and saved scan locations, and your settings. SlateFlow will close. Your original PDF and Markdown files will stay on your device.") },
+        dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        confirmButton = {
+            TextButton(onClick = { confirmReset = false; clearAppData() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Clear everything") }
+        },
+    )
+
 }
 
 @Composable

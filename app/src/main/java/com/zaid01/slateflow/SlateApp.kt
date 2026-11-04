@@ -40,6 +40,7 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     val documents by model.recent.collectAsStateWithLifecycle()
     val loading by model.loading.collectAsStateWithLifecycle()
     val error by model.error.collectAsStateWithLifecycle()
+    val unavailable by model.unavailable.collectAsStateWithLifecycle()
     val dashboard by model.dashboard.collectAsStateWithLifecycle()
     val explorer: ExploreModel = viewModel()
     val exploreState by explorer.state.collectAsStateWithLifecycle()
@@ -47,7 +48,8 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     var focused by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf(HomeTab.DASHBOARD) }
     LaunchedEffect(document?.uri) { focused = false }
-    val width = calculateWindowSizeClass(LocalContext.current as Activity).widthSizeClass
+    val context = LocalContext.current
+    val width = calculateWindowSizeClass(context as Activity).widthSizeClass
     val configuration = LocalConfiguration.current
     val wide = width != WindowWidthSizeClass.Compact
     val expanded = width == WindowWidthSizeClass.Expanded && configuration.screenWidthDp > configuration.screenHeightDp
@@ -64,7 +66,17 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
         }
     }
     if (showSettings) {
-        SettingsPage(settings, model::update) { showSettings = false }
+        SettingsPage(settings, model::update, clearAppData = {
+            try {
+                if (!context.getSystemService(android.app.ActivityManager::class.java).clearApplicationUserData()) {
+                    showSettings = false
+                    model.error.value = "Android could not clear the app data. Try again."
+                }
+            } catch (exception: Exception) {
+                showSettings = false
+                model.error.value = "Android could not clear the app data. Try again."
+            }
+        }) { showSettings = false }
     } else {
         Scaffold(
             topBar = {
@@ -122,6 +134,7 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
             }
         }
     }
+    if (unavailable != null) MissingFileDialog(unavailable!!.name, { model.unavailable.value = null }, model::removeUnavailable)
     if (error != null) AlertDialog(
         onDismissRequest = { model.error.value = null },
         title = { Text("Something needs attention") }, text = { Text(error!!) },

@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.zaid01.slateflow.R
 
 enum class AppSymbol(val resource: Int) {
+    CHECK(R.drawable.ic_check), MINUS(R.drawable.ic_minus),
     DASHBOARD(R.drawable.ic_dashboard), FOLDER(R.drawable.ic_folder),
     DOCUMENT(R.drawable.ic_document), SETTINGS(R.drawable.ic_settings),
     BACK(R.drawable.ic_back), ADD(R.drawable.ic_add),
