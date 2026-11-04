@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider android:name="com.zaid01.slateflow.FolderFixtureProvider"
+            android:authorities="com.zaid01.slateflow.test.folders"
+            android:exported="true" android:grantUriPermissions="true" />
+    </application>
+</manifest>

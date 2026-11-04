@@ -30,6 +30,7 @@ class MarkdownAnchorTest {
                 assertTrue(reader.scrollY > 0)
                 val firstLine = reader.text.layout.getLineForOffset(saved)
                 assertTrue(kotlin.math.abs(reader.scrollY - reader.text.layout.getLineTop(firstLine)) < reader.text.lineHeight)
+                reader.text.setPadding(100, 0, 100, 32)
                 reader.text.textSize = 24f
             }
             instrumentation.waitForIdleSync()

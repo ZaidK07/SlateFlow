@@ -1,32 +1,46 @@
-# SlateFlow
+# SlateFlow 1.1
 
-A local PDF and Markdown reader for Android 14+, built with Kotlin and Jetpack Compose. Designed for phones and tablets, with dark grey surfaces, rounded controls, and Signature Blue or Android wallpaper accents.
+A local PDF and Markdown reader for Android 14+, built with Kotlin and Jetpack Compose for phones and tablets.
 
-## Reading
+## Appearance and navigation
 
-- Open PDFs, `.md`, `.markdown`, and plain-text documents through Android’s file picker. Persisted URI permissions let the app reopen files without broad storage access.
-- The library lists recent documents and reading progress. Wider windows use a sidebar and card grid; expanded landscape PDF readers show two pages per row; portrait readers keep a single column.
-- A gear icon opens a dedicated Settings page for color accents, Markdown margins, text size, and line spacing. Settings persist in DataStore.
-- Markdown supports headings, lists, links, code blocks, tables, and strikethrough. Parsing runs off the main thread. Embedded remote and relative images are not loaded in this first version. Files larger than 12 MiB are rejected to bound memory use.
-- PDF rendering runs off the main thread and uses native `PdfRenderer`. ARGB bitmaps are required by the platform. Each page is capped around 4 MiB; the cache holds at most three pages and 12 MiB. Live UI bitmaps are never manually recycled.
+Nexus brings cool neutral surfaces, blue details, green actions, rounded controls, and bundled Inter typography. Choose Light, Dark, or System in Settings, with optional Android wallpaper accents. The launcher icon uses the same blue, white, and green palette. Inter's license is bundled in `assets/licenses/Inter-OFL.txt`.
 
-## Reading memory
+Phones use Dashboard and Explore bottom tabs. Wider windows use a compact navigation rail. Readers use one PDF page per row in portrait and two in expanded landscape windows.
 
-Room stores a position for each document URI. Markdown positions use a character anchor and fraction within the line; PDF positions use a page index and fraction within the visible row. This makes restoration more stable when window sizes or typography change.
+## Dashboard
 
-The writer saves during continuous scrolling at intervals of at least 250 ms, after 150 ms of inactivity, and on pause or navigation. Writes are serialized; switching documents waits for queued saves before reading their stored state. The last active document reopens on launch.
+A compact welcome card and one-row Continue reading card precede the reading history. The customize control saves grouping (last read, type, folder, progress, or none), sorting (recent, name, or progress), cards/list layout, and welcome/continue visibility. File-type filtering also persists. Search matches document names and known folder paths. Identically named folders retain separate groups when their URIs differ.
 
-Abrupt process termination or power loss can discard a position that has not reached disk. No lifecycle callback can guarantee a final save after termination. A moved, deleted, edited, or inaccessible document may require reselection or yield a different restored position. Different picker URIs for the same file are tracked separately.
+## Explore
+
+Add one or more folders using Android's folder picker. The app remembers those tree permissions and browses their PDFs, Markdown/plain-text files, and subfolders. Folder cards show counts of their immediate children, not recursive totals. Breadcrumbs and Android Back support nested navigation; search and file-type filters apply to the current directory.
+
+Directory queries run off the main thread. Only current/visible folder summaries are loaded, with at most three summary queries at a time and a bounded cache. Refresh clears those summaries. A directory with over 20,000 items reports a limit rather than silently hiding files. Android restricts which storage roots can be selected; grant each accessible folder tree you want to browse.
+
+Removing a root from Explore hides it without deleting files. Its URI permission is retained for documents already opened from that tree, so history can still reopen them. Revoking access through Android or moving/deleting a document may require choosing it again.
+
+## Reading and memory
+
+Both readers place their fading scroll indicator at the outer right edge, clear of the reading content. Markdown margins are applied to the text inside the full-width scroll view. PDF has a separate indicator gutter and a page scrubber.
+
+Markdown supports headings, lists, links, code blocks, tables, and strikethrough. Parsing runs off the main thread. Embedded remote/relative images are not loaded. Files larger than 12 MiB are rejected to bound memory use. Native `PdfRenderer` requires ARGB bitmaps; pages are capped around 4 MiB, and the cache holds at most three pages and 12 MiB. Live UI bitmaps are never manually recycled.
+
+Room saves character/line anchors for Markdown and page/row fractions for PDF. Saves run during continuous scrolling at intervals of at least 250 ms, after 150 ms of inactivity, and on pause/navigation. Switching documents waits for queued writes. The last active document reopens on launch.
+
+The 1.0-to-1.1 database migration preserves positions and adds source/folder metadata. Provider document IDs match individual and tree URIs, allowing a document opened through Explore to reuse its earlier history and position. Older individually opened documents show under “Opened individually” until opened through Explore.
+
+Abrupt termination or power loss can discard a position not yet committed to disk. Changed document content can affect anchor restoration. No lifecycle callback guarantees a final save after termination.
 
 ## Build and verification
 
-Open the project in Android Studio using its configured SDK and JDK, or run:
+Use Android Studio's configured SDK/JDK, or run:
 
 ```sh
-./gradlew :app:assembleDebug :app:assembleRelease :app:lintDebug
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:lintDebug
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-The device tests cover database persistence, independent per-document positions, bounded PDF bitmap sizes and cache eviction, native Markdown anchor restoration through initial layout and typography reflow, and Settings navigation. Release builds enable R8 and resource shrinking; release signing is not configured.
+Tests cover grouping/filtering/sorting, same-name folder grouping, schema migration without position loss, tree/single URI identity, nested folder metadata, independent saved positions, bounded PDF rendering, Markdown reflow, navigation, and theme controls. Test documents are synthetic and installed only with the instrumentation APK.
 
-Performance and exact restoration still need validation on the intended 4 GB tablet, including very large documents, rotation, and fast continuous scrolling. A device-generated Baseline Profile and Macrobenchmark measurements remain follow-up work; no fixed frame-rate guarantee is assumed.
+Release builds enable R8/resource shrinking; release signing is not configured. The installable development APK is `app/build/outputs/apk/debug/app-debug.apk`. Version 1.1 uses version code 2 and can update the previous debug-signed 1.0 installation without clearing its data. A device-generated Baseline Profile and Macrobenchmark remain future performance work.
