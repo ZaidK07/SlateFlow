@@ -13,8 +13,8 @@ android {
         applicationId = "com.zaid01.slateflow"
         minSdk = 34
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -34,12 +34,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    packaging { jniLibs.useLegacyPackaging = true }
     buildFeatures {
         compose = true
     }
 }
 
 dependencies {
+    implementation(libs.pdfium)
     implementation(libs.androidx.room.runtime)
     annotationProcessor(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)

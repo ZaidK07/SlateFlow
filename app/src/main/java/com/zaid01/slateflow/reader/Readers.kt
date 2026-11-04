@@ -1,6 +1,11 @@
 package com.zaid01.slateflow.reader
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import android.content.ClipData
+import android.content.ClipboardManager
+import com.zaid01.slateflow.ui.components.AppIcon
+import com.zaid01.slateflow.ui.components.AppSymbol
 import androidx.core.net.toUri
 import android.view.View
 import android.widget.ScrollView
@@ -30,6 +35,7 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 @Composable
@@ -55,7 +61,15 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
                 val pdf = PdfEngine(context, doc.sourceUri.ifBlank { doc.uri }.toUri())
                 synchronized(lock) { if (disposed) pdf.close() else opened = pdf }
                 withContext(Dispatchers.Main) { if (!disposed) engine = pdf }
-            } catch (e: Exception) { withContext(Dispatchers.Main) { if (!disposed) failure = "Could not open this PDF. It may be encrypted, damaged, or no longer accessible." } }
+            } catch (exception: CancellationException) { throw exception }
+            catch (exception: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (!disposed) {
+                        if (exception is java.io.FileNotFoundException || exception is SecurityException) model.fileUnavailable(doc)
+                        else failure = "Could not open this PDF. It may be encrypted or damaged."
+                    }
+                }
+            }
         }
         onDispose {
             synchronized(lock) {
@@ -102,6 +116,35 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
                 }
             }
             val scope = rememberCoroutineScope()
+            var selection by remember { mutableStateOf<PdfTextSelection?>(null) }
+            var showSearch by remember { mutableStateOf(false) }
+            var query by remember { mutableStateOf("") }
+            var searching by remember { mutableStateOf(false) }
+            var searchJob by remember { mutableStateOf<Job?>(null) }
+            var lastQuery by remember { mutableStateOf("") }
+            var menu by remember { mutableStateOf(false) }
+            val snackbar = remember { SnackbarHostState() }
+            fun report(message: String) { scope.launch { snackbar.showSnackbar(message) } }
+            fun clearSelection() {
+                selection = null
+                scope.launch { pdf.releaseTextPage() }
+            }
+            fun selectCurrentPage() {
+                scope.launch {
+                    try {
+                        selection = pdf.selectPage(selection?.page ?: state.firstVisibleItemIndex * columns)
+                        if (selection == null) report("This page has no selectable text.")
+                    } catch (exception: CancellationException) { throw exception }
+                    catch (exception: Exception) { report(exception.message ?: "Could not select this page.") }
+                }
+            }
+            BackHandler(selection != null || showSearch) {
+                if (selection != null) clearSelection() else showSearch = false
+            }
+            LaunchedEffect(state.isScrollInProgress) {
+                if (state.isScrollInProgress && !searching && selection != null) clearSelection()
+            }
+            Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                 LazyColumn(state = state, modifier = Modifier.weight(1f).fillMaxHeight(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -109,7 +152,7 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             repeat(columns) { column ->
                                 val page = row * columns + column
-                                if (page < pdf.count) PdfPage(pdf, page, Modifier.weight(1f)) { renderedPages[page] = true }
+                                if (page < pdf.count) PdfPage(pdf, page, Modifier.weight(1f), selection?.takeIf { it.page == page }, { selection = it }, ::report) { renderedPages[page] = true }
                                 else Spacer(Modifier.weight(1f))
                             }
                         }
@@ -117,20 +160,70 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
                 }
                 PdfScrollbar(state)
                 }
+                if (selection != null) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            val selected = selection ?: return@TextButton
+                            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("PDF text", selected.text))
+                        }) { Text("Copy") }
+                        TextButton(onClick = ::selectCurrentPage) { Text("Select page") }
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = ::clearSelection) { Text("Clear") }
+                    }
+                }
+                if (showSearch) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(query, { query = it; searchJob?.cancel(); searching = false }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("Find in PDF") }, shape = RoundedCornerShape(12.dp))
+                    TextButton(enabled = query.isNotBlank() && !searching, onClick = {
+                        searching = true
+                        val requestedQuery = query
+                        searchJob = scope.launch {
+                            try {
+                                val found = pdf.findNext(requestedQuery, selection?.page ?: (state.firstVisibleItemIndex * columns), if (requestedQuery == lastQuery) selection?.end ?: 0 else 0)
+                                lastQuery = requestedQuery
+                                if (found == null) report("No matching text found.")
+                                else {
+                                    val row = found.page / columns
+                                    state.scrollToItem(row)
+                                    val ready = withTimeoutOrNull(10_000) { snapshotFlow { renderedPages[found.page] == true }.first { it } }
+                                    if (ready == null) {
+                                        report("The matching page could not be displayed. Try again.")
+                                        return@launch
+                                    }
+                                    withFrameNanos { }
+                                    val size = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == row }?.size ?: 1
+                                    state.scrollToItem(row, ((found.bounds.firstOrNull()?.top ?: 0f) * size - state.layoutInfo.viewportSize.height / 3f).roundToInt().coerceAtLeast(0))
+                                    selection = found
+                                }
+                            } catch (exception: CancellationException) { throw exception }
+                            catch (exception: Exception) { report(exception.message ?: "Could not search this PDF.") }
+                            finally { searching = false }
+                        }
+                    }) { if (searching) CircularProgressIndicator(Modifier.size(20.dp)) else Text("Next") }
+                    TextButton(onClick = { searchJob?.cancel(); searching = false; showSearch = false }) { Text("Close") }
+                }
                 val current by remember { derivedStateOf { state.firstVisibleItemIndex * columns + 1 } }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box {
+                        IconButton(onClick = { menu = true }) { AppIcon(AppSymbol.MORE, "PDF tools") }
+                        DropdownMenu(menu, { menu = false }) {
+                            DropdownMenuItem(text = { Text("Select page text") }, onClick = { menu = false; selectCurrentPage() })
+                            DropdownMenuItem(text = { Text("Find in PDF") }, onClick = { menu = false; showSearch = true })
+                        }
+                    }
                     Text("$current / ${pdf.count}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Slider(value = current.toFloat(), onValueChange = { page ->
                         scope.launch { state.scrollToItem(((page.roundToInt() - 1) / columns).coerceIn(0, rows - 1)) }
                     }, valueRange = 1f..maxOf(2, pdf.count).toFloat(), enabled = pdf.count > 1, modifier = Modifier.weight(1f))
                 }
             }
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+            }
         }
     }
 }
 
 @Composable
-private fun PdfPage(engine: PdfEngine, index: Int, modifier: Modifier, ready: () -> Unit) {
+private fun PdfPage(engine: PdfEngine, index: Int, modifier: Modifier, selection: PdfTextSelection?, selected: (PdfTextSelection?) -> Unit, error: (String) -> Unit, ready: () -> Unit) {
     BoxWithConstraints(modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
         val width = with(LocalDensity.current) { maxWidth.roundToPx() }
         var failure by remember { mutableStateOf(false) }
@@ -141,7 +234,9 @@ private fun PdfPage(engine: PdfEngine, index: Int, modifier: Modifier, ready: ()
         }
         val page = bitmap
         LaunchedEffect(page) { if (page != null) { withFrameNanos { }; ready() } }
-        if (page != null) Image(page.asImageBitmap(), "Page ${index + 1}", Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height))
+        if (page != null) SelectablePdfPage(engine, index, selection, selected, error) {
+            Image(page.asImageBitmap(), "Page ${index + 1}", Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height))
+        }
         else Box(Modifier.fillMaxWidth().aspectRatio(0.707f), contentAlignment = Alignment.Center) {
             if (failure) Text("Page could not be rendered", Modifier.padding(16.dp))
             else CircularProgressIndicator(Modifier.size(24.dp))
@@ -228,7 +323,10 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
                 markwon.render(markwon.parse(source))
             }
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { failure = e.message ?: "Could not read this Markdown file." }
+        catch (exception: Exception) {
+            if (exception is java.io.FileNotFoundException || exception is SecurityException) model.fileUnavailable(doc)
+            else failure = "Could not read this Markdown file. It may be too large or damaged."
+        }
     }
     when {
         failure != null -> ReaderMessage(failure!!)

@@ -11,6 +11,7 @@ public interface DocumentDao {
     @Query("SELECT * FROM documents ORDER BY openedAt DESC") List<Document> recent();
     @Query("SELECT * FROM documents WHERE uri = :uri") Document find(String uri);
     @Query("SELECT * FROM documents WHERE documentKey = :key LIMIT 1") Document findByKey(String key);
+    @Query("DELETE FROM documents WHERE uri = :uri") void remove(String uri);
     @Insert(onConflict = OnConflictStrategy.REPLACE) void put(Document document);
     @Query("UPDATE documents SET anchor = :anchor, offset = :offset, fraction = :fraction, progress = :progress WHERE uri = :uri")
     void savePosition(String uri, int anchor, int offset, float fraction, float progress);

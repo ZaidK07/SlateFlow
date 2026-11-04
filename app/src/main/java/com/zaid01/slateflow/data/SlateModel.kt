@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import java.io.FileNotFoundException
 import androidx.datastore.preferences.core.*
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -53,6 +54,7 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
     val active = MutableStateFlow<Document?>(null)
     val loading = MutableStateFlow(true)
     val error = MutableStateFlow<String?>(null)
+    val unavailable = MutableStateFlow<UnavailableDocument?>(null)
     private val writes = Channel<PositionWrite>(Channel.UNLIMITED)
     private var latest: PositionWrite? = null
     private var lastQueued: PositionWrite? = null
@@ -72,7 +74,16 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
             try {
                 refresh()
                 val uri = application.preferences.data.first()[activeKey]
-                if (uri != null) active.value = withContext(Dispatchers.IO) { dao.find(uri) }
+                if (uri != null) {
+                    val document = withContext(Dispatchers.IO) { dao.find(uri) }
+                    if (document != null) {
+                        try {
+                            withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.requireReadable(Uri.parse(document.sourceUri.ifBlank { document.uri })) }
+                            active.value = document
+                        } catch (exception: FileNotFoundException) { fileUnavailable(document) }
+                        catch (exception: SecurityException) { fileUnavailable(document) }
+                    }
+                }
             } catch (e: Exception) { error.value = "Could not restore your library: ${e.message}" }
             finally { loading.value = false }
         }
@@ -83,16 +94,20 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
         flush()
         viewModelScope.launch {
             loading.value = true
+            var knownDocument: Document? = null
             try {
                 val barrier = CompletableDeferred<Unit>()
                 writes.send(PositionWrite("", ReadingPosition(), barrier))
                 barrier.await()
                 val doc = withContext(Dispatchers.IO) {
                     val resolver = getApplication<Application>().contentResolver
+                    val identity = DocumentIdentity.key(uri)
+                    knownDocument = dao.findByKey(identity) ?: dao.find(uri.toString())
                     if (!android.provider.DocumentsContract.isTreeUri(uri) &&
                         resolver.persistedUriPermissions.none { it.uri == uri && it.isReadPermission }) {
                         resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
+                    resolver.requireReadable(uri)
                     val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
                     val type = resolver.getType(uri)
                     val kind = when {
@@ -100,8 +115,7 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
                         name.endsWith(".md", true) || name.endsWith(".markdown", true) || type == "text/markdown" || type == "text/plain" -> "md"
                         else -> error("Choose a PDF or Markdown file.")
                     }
-                    val identity = DocumentIdentity.key(uri)
-                    (dao.findByKey(identity) ?: dao.find(uri.toString()) ?: Document().apply { this.uri = uri.toString() }).apply {
+                    (knownDocument ?: Document().apply { this.uri = uri.toString() }).apply {
                         this.name = name
                         this.kind = kind
                         this.documentKey = identity
@@ -116,10 +130,40 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
                 active.value = doc
                 getApplication<Application>().preferences.edit { it[activeKey] = doc.uri }
                 refresh()
-            } catch (e: Exception) { error.value = e.message ?: "This file could not be opened. Try selecting it again." }
+            } catch (exception: CancellationException) { throw exception }
+            catch (exception: FileNotFoundException) { unavailable.value = UnavailableDocument(knownDocument?.uri ?: uri.toString(), knownDocument?.name ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')) }
+            catch (exception: SecurityException) { unavailable.value = UnavailableDocument(knownDocument?.uri ?: uri.toString(), knownDocument?.name ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')) }
+            catch (exception: Exception) { error.value = "This document could not be opened. Try selecting it again." }
             finally { loading.value = false }
         }
     }
+    fun fileUnavailable(document: Document) {
+        unavailable.value = UnavailableDocument(document.uri, document.name)
+        if (active.value?.uri == document.uri) active.value = null
+        viewModelScope.launch {
+            getApplication<Application>().preferences.edit { if (it[activeKey] == document.uri) it.remove(activeKey) }
+        }
+    }
+
+    fun removeUnavailable() {
+        val missing = unavailable.value ?: return
+        viewModelScope.launch {
+            try {
+                flush()
+                val barrier = CompletableDeferred<Unit>()
+                writes.send(PositionWrite("", ReadingPosition(), barrier))
+                barrier.await()
+                withContext(Dispatchers.IO) { dao.remove(missing.uri) }
+                if (active.value?.uri == missing.uri) active.value = null
+                if (latest?.uri == missing.uri) { idleSave?.cancel(); latest = null; lastQueued = null }
+                getApplication<Application>().preferences.edit { if (it[activeKey] == missing.uri) it.remove(activeKey) }
+                unavailable.value = null
+                refresh()
+            } catch (exception: CancellationException) { throw exception }
+            catch (exception: Exception) { error.value = "Could not remove this document from history. Try again." }
+        }
+    }
+
     fun home() {
         flush()
         active.value = null
