@@ -13,6 +13,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zaid01.slateflow.data.ReaderSettings
+import com.zaid01.slateflow.data.ThemeMode
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,7 +30,16 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, bac
                     Text("Your reading space", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                     Text("A few small adjustments. A more comfortable read.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                SettingsGroup("Appearance", "Quiet surfaces and a palette that feels like you.") {
+                SettingsGroup("Appearance", "Nexus colors, balanced for day and night.") {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = settings.themeMode == mode,
+                                onClick = { update(settings.copy(themeMode = mode)) },
+                                label = { Text(mode.label) },
+                            )
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Android theme colors", style = MaterialTheme.typography.titleMedium)
@@ -38,7 +48,7 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, bac
                         Switch(checked = settings.dynamic, onCheckedChange = { update(settings.copy(dynamic = it)) })
                     }
                     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                        Text(if (settings.dynamic) "System palette is active" else "Signature Blue · SlateFlow’s cool, soothing palette", Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(if (settings.dynamic) "System palette is active" else "Nexus · Cool surfaces, blue details, and fresh green accents", Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
                 SettingsGroup("Markdown", "Set the spacing and typography for your documents.") {
@@ -54,7 +64,7 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, bac
                     Text("Your position is saved while you scroll, when you stop, and when you leave the reader.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Files stay on your device. SlateFlow uses the access you grant in the Android file picker.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("SlateFlow  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("SlateFlow 1.1  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
