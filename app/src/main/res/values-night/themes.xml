@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.SlateFlow" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/slate_background</item>
+        <item name="android:colorAccent">@color/slate_accent</item>
+        <item name="android:windowLightStatusBar">@bool/slate_light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/slate_light_system_bars</item>
+        <item name="android:windowSplashScreenBackground">@color/slate_background</item>
+    </style>
+</resources>

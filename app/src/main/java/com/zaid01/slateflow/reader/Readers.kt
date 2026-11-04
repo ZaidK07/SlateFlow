@@ -52,7 +52,7 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
         val lock = Any()
         scope.launch {
             try {
-                val pdf = PdfEngine(context, doc.uri.toUri())
+                val pdf = PdfEngine(context, doc.sourceUri.ifBlank { doc.uri }.toUri())
                 synchronized(lock) { if (disposed) pdf.close() else opened = pdf }
                 withContext(Dispatchers.Main) { if (!disposed) engine = pdf }
             } catch (e: Exception) { withContext(Dispatchers.Main) { if (!disposed) failure = "Could not open this PDF. It may be encrypted, damaged, or no longer accessible." } }
@@ -103,7 +103,8 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
             }
             val scope = rememberCoroutineScope()
             Column(Modifier.fillMaxSize()) {
-                LazyColumn(state = state, modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(state = state, modifier = Modifier.weight(1f).fillMaxHeight(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(rows, key = { it }) { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             repeat(columns) { column ->
@@ -113,6 +114,8 @@ private fun PdfReader(doc: Document, expanded: Boolean, model: SlateModel) {
                             }
                         }
                     }
+                }
+                PdfScrollbar(state)
                 }
                 val current by remember { derivedStateOf { state.firstVisibleItemIndex * columns + 1 } }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -155,6 +158,14 @@ internal class MarkdownScroll(context: android.content.Context) : ScrollView(con
     val text = TextView(context).apply { setTextIsSelectable(true); setPadding(0, 0, 0, 32) }
     init {
         isFillViewport = true
+        isVerticalScrollBarEnabled = true
+        isHorizontalScrollBarEnabled = false
+        verticalScrollbarPosition = View.SCROLLBAR_POSITION_RIGHT
+        scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+        isScrollbarFadingEnabled = true
+        scrollBarDefaultDelayBeforeFade = 600
+        scrollBarFadeDuration = 180
+        scrollBarSize = (3 * resources.displayMetrics.density).roundToInt()
         addView(text, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         setOnScrollChangeListener { _, _, y, _, _ ->
             if (restored && !applying) {
@@ -193,7 +204,8 @@ internal class MarkdownScroll(context: android.content.Context) : ScrollView(con
 private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: SlateModel) {
     val context = LocalContext.current
     val color = MaterialTheme.colorScheme.onSurface.toArgb()
-    val accent = MaterialTheme.colorScheme.primary.toArgb()
+    val accent = MaterialTheme.colorScheme.secondary.toArgb()
+    val dark = com.zaid01.slateflow.ui.theme.isReaderDark(settings.themeMode)
     val markwon = remember { Markwon.builder(context)
         .usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create())
         .usePlugin(object : AbstractMarkwonPlugin() {
@@ -207,7 +219,7 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
         try {
             rendered = withContext(Dispatchers.Default) {
                 val source = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(doc.uri.toUri())?.buffered()?.use { stream ->
+                    context.contentResolver.openInputStream(doc.sourceUri.ifBlank { doc.uri }.toUri())?.buffered()?.use { stream ->
                         val bytes = stream.readNBytes(12 * 1024 * 1024 + 1)
                         require(bytes.size <= 12 * 1024 * 1024) { "This Markdown file exceeds the 12 MB reading limit." }
                         bytes.toString(Charsets.UTF_8)
@@ -223,19 +235,33 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
         rendered == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else -> BoxWithConstraints(Modifier.fillMaxSize()) {
             val margin = settings.margin.dp.coerceAtMost((maxWidth - 160.dp).coerceAtLeast(0.dp) / 2)
-            AndroidView(modifier = Modifier.fillMaxSize().padding(horizontal = margin), factory = { ctx ->
-                MarkdownScroll(ctx).apply { anchor = doc.anchor; lineFraction = doc.fraction }
+            val density = LocalDensity.current
+            val marginPixels = with(density) { margin.roundToPx() }
+            key(dark) {
+            AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
+                val themedContext = android.view.ContextThemeWrapper(ctx, if (dark) com.zaid01.slateflow.R.style.Theme_SlateFlow_Reader_Dark else com.zaid01.slateflow.R.style.Theme_SlateFlow_Reader_Light)
+                MarkdownScroll(themedContext).apply { anchor = doc.anchor; lineFraction = doc.fraction }
             }, update = { scroll ->
                 scroll.onPosition = { p ->
                     doc.anchor = p.anchor; doc.offset = p.offset; doc.fraction = p.fraction; doc.progress = p.progress
                     model.position(doc.uri, p)
                 }
+                // Only the text receives reading margins; the scroll view spans the viewport.
+                if (scroll.text.paddingLeft != marginPixels) {
+                    scroll.text.setPadding(marginPixels, 0, marginPixels, (32 * scroll.resources.displayMetrics.density).roundToInt())
+                }
+                scroll.verticalScrollbarThumbDrawable = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.argb(180, android.graphics.Color.red(color), android.graphics.Color.green(color), android.graphics.Color.blue(color)))
+                    cornerRadius = 4 * scroll.resources.displayMetrics.density
+                }
+                scroll.text.typeface = androidx.core.content.res.ResourcesCompat.getFont(context, com.zaid01.slateflow.R.font.inter)
                 scroll.text.setTextColor(color)
                 scroll.text.setLinkTextColor(accent)
                 scroll.text.textSize = settings.font
                 scroll.text.setLineSpacing(0f, settings.spacing)
                 if (scroll.text.text !== rendered) markwon.setParsedMarkdown(scroll.text, rendered as android.text.Spanned)
             })
+            }
         }
     }
 }

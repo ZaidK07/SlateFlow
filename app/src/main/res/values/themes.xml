@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.SlateFlow" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#171A20</item>
-        <item name="android:colorAccent">#A8C7FA</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
-        <item name="android:windowSplashScreenBackground">#171A20</item>
+    <style name="Theme.SlateFlow" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/slate_background</item>
+        <item name="android:colorAccent">@color/slate_accent</item>
+        <item name="android:windowLightStatusBar">@bool/slate_light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/slate_light_system_bars</item>
+        <item name="android:windowSplashScreenBackground">@color/slate_background</item>
     </style>
     <style name="Theme.SlateFlow.Reader.Light" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:colorAccent">#2E7D32</item>
