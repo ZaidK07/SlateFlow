@@ -1,4 +1,4 @@
-# SlateFlow 1.2
+# SlateFlow 1.2.1
 
 A local PDF and Markdown reader for Android 14+, built with Kotlin and Jetpack Compose for phones and tablets.
 
@@ -53,4 +53,6 @@ Use Android Studio's configured SDK/JDK, or run:
 
 Tests cover recursive discovery through 1,500 nested levels, empty/intermediate folders, overlapping roots, cycles, cancellation, unreadable branches, scan limits, size totals, filtering/sorting, persistent and interrupted cache writes, history migration, reading positions, bounded PDF rendering, navigation, themes, Explore controls, mixed-content PDF selection/search, actual long-press-to-copy interaction, missing-file recovery without deleting original files, and reset confirmation/cancellation. Test documents are synthetic and installed only with the instrumentation APK.
 
-Release builds enable R8/resource shrinking; release signing is not configured. The installable development APK is `app/build/outputs/apk/debug/app-debug.apk`. For local delivery, the optimized release APK can be signed with the same development key; the current packaged build is `app/build/outputs/apk/release/SlateFlow-1.2.apk`. Version 1.2 uses version code 3 and can update the previous debug-signed installations without clearing its data. A device-generated Baseline Profile and Macrobenchmark remain future performance work.
+Release builds enable R8/resource shrinking; release signing is not configured. The installable development APK is `app/build/outputs/apk/debug/app-debug.apk`. For local delivery, the optimized release APK can be signed with the same development key; the current packaged build is `app/build/outputs/apk/release/SlateFlow-1.2.1.apk`. Version 1.2.1 uses version code 4 and can update the previous debug-signed installations without clearing its data. A device-generated Baseline Profile and Macrobenchmark remain future performance work.
+
+Release verification: run `python3 scripts/check-release-startup.py SIGNED_APK` with a connected device. This installs over existing data and checks that the actual signed release remains alive and visible after startup. Release builds use standard whole-program R8 optimization; partial package-scoped optimization caused a Kotlin class-access crash in 1.2 and has been removed.
