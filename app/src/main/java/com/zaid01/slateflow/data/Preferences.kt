@@ -13,7 +13,7 @@ data class ReaderSettings(
     val font: Float = 18f,
     val spacing: Float = 1.45f,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val dualSpread: Boolean = true,
+    val dualSpread: Boolean = false,
     val pdfInvert: Boolean = false,
 )
 

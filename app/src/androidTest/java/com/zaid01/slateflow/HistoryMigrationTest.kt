@@ -23,7 +23,7 @@ class HistoryMigrationTest {
             db.execSQL("INSERT INTO documents VALUES (?, 'chapter.md', 'md', 123, 1870, 14, 0.35, 0.7)", arrayOf(uri))
             db.version = 1
         }
-        val db = Room.databaseBuilder(context, SlateDatabase::class.java, name).addMigrations(SlateDatabase.MIGRATION_1_2).build()
+        val db = Room.databaseBuilder(context, SlateDatabase::class.java, name).addMigrations(SlateDatabase.MIGRATION_1_2, SlateDatabase.MIGRATION_2_3).build()
         try {
             val saved = db.documents().find(uri)
             assertEquals(1870, saved.anchor)

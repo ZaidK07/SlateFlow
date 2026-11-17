@@ -27,8 +27,6 @@ internal fun SelectablePdfPage(
     selection: PdfTextSelection?,
     selected: (PdfTextSelection?) -> Unit,
     error: (String) -> Unit,
-    scale: Float = 1f,
-    panOffset: Offset = Offset.Zero,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -38,36 +36,24 @@ internal fun SelectablePdfPage(
     val currentSelected by rememberUpdatedState(selected)
     val currentError by rememberUpdatedState(error)
 
-    fun toPageCoords(pos: Offset): Offset {
-        val w = size.width.toFloat().coerceAtLeast(1f)
-        val h = size.height.toFloat().coerceAtLeast(1f)
-        val centerX = w / 2f
-        val centerY = h / 2f
-        val unscaledX = (pos.x - panOffset.x - centerX) / scale.coerceAtLeast(0.01f) + centerX
-        val unscaledY = (pos.y - panOffset.y - centerY) / scale.coerceAtLeast(0.01f) + centerY
-        return Offset((unscaledX / w).coerceIn(0f, 1f), (unscaledY / h).coerceIn(0f, 1f))
-    }
-
     fun extend(fixed: Int, position: Offset) {
         request?.cancel()
-        val coords = toPageCoords(position)
         request = scope.launch {
             try {
-                engine.extendSelection(page, fixed, coords.x, coords.y)?.let(currentSelected)
+                engine.extendSelection(page, fixed, position.x / size.width.coerceAtLeast(1), position.y / size.height.coerceAtLeast(1))?.let(currentSelected)
             } catch (exception: CancellationException) { throw exception }
             catch (exception: Exception) { currentError(exception.message ?: "Could not select this text.") }
         }
     }
 
-    Box(Modifier.fillMaxWidth().onSizeChanged { size = it }.pointerInput(engine, page, scale, panOffset) {
+    Box(Modifier.fillMaxWidth().onSizeChanged { size = it }.pointerInput(engine, page) {
         detectDragGesturesAfterLongPress(
             onDragStart = { position ->
                 anchor = null
                 request?.cancel()
-                val coords = toPageCoords(position)
                 request = scope.launch {
                     try {
-                        val word = engine.selectWord(page, coords.x, coords.y)
+                        val word = engine.selectWord(page, position.x / size.width.coerceAtLeast(1), position.y / size.height.coerceAtLeast(1))
                         anchor = word?.start
                         currentSelected(word)
                         if (word == null) currentError("No selectable text here. This part may be an image.")

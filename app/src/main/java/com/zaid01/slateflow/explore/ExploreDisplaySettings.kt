@@ -7,7 +7,7 @@ enum class ExploreSort(val label: String) {
     PATH("Folder path"),
     NAME("Name A–Z"),
     DATE("Recently modified"),
-    SIZE("Largest size"),
+    SIZE("Largest first"),
     DOCUMENTS("Most documents")
 }
 

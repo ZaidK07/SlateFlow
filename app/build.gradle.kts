@@ -54,6 +54,7 @@ dependencies {
     implementation(libs.markwon.strikethrough)
     implementation(libs.markwon.ext.tasklist)
     implementation(libs.markwon.ext.latex)
+    implementation(libs.markwon.inline.parser)
     implementation(libs.markwon.html)
     implementation(libs.markwon.linkify)
     implementation(libs.markwon.syntax.highlight)

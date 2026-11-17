@@ -41,7 +41,7 @@ class PdfCopyInteractionTest {
                 model.active.value = Document().apply { uri = Uri.fromFile(file).toString(); name = "copy-interaction.pdf"; kind = "pdf" }
             }
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Page 1").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("Page 1").performTouchInput { longClick(Offset(width * 0.1f, height * 0.078f)) }
+            compose.onNodeWithContentDescription("Page 1").performTouchInput { longClick(Offset(width * 0.1f, width * 1.5f * 0.078f)) }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Copy").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Copy").performClick()
             compose.runOnIdle {

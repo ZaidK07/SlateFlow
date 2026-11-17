@@ -22,6 +22,7 @@ markwon-tables = { module = "io.noties.markwon:ext-tables", version = "4.6.2" }
 markwon-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version = "4.6.2" }
 markwon-ext-tasklist = { module = "io.noties.markwon:ext-tasklist", version = "4.6.2" }
 markwon-ext-latex = { module = "io.noties.markwon:ext-latex", version = "4.6.2" }
+markwon-inline-parser = { module = "io.noties.markwon:inline-parser", version = "4.6.2" }
 markwon-html = { module = "io.noties.markwon:html", version = "4.6.2" }
 markwon-linkify = { module = "io.noties.markwon:linkify", version = "4.6.2" }
 markwon-syntax-highlight = { module = "io.noties.markwon:syntax-highlight", version = "4.6.2" }

@@ -13,6 +13,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
@@ -48,6 +52,7 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import io.noties.markwon.syntax.SyntaxHighlightPlugin
 import io.noties.markwon.syntax.Prism4jSyntaxHighlight
@@ -300,25 +305,60 @@ private fun PdfPage(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .onSizeChanged { pageSize = it }
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = { tapPos ->
-                        if (scale > 1.1f) {
-                            scale = 1f
-                            panOffset = Offset.Zero
-                        } else {
-                            val newScale = 2.2f
-                            scale = newScale
-                            val center = Offset(size.width / 2f, size.height / 2f)
-                            panOffset = clampOffset((center - tapPos) * (newScale - 1f), newScale, size)
+                var lastTapTime = 0L
+                var lastTapPos = Offset.Zero
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downTime = System.currentTimeMillis()
+                    val downPos = down.position
+                    var isTwoFinger = false
+                    var moved = false
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.filter { it.pressed }
+                        if (pressed.isEmpty()) break
+
+                        if (pressed.size >= 2) {
+                            isTwoFinger = true
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            if (zoomChange != 1f || panChange != Offset.Zero) {
+                                val newScale = (scale * zoomChange).coerceIn(1f, 4f)
+                                scale = newScale
+                                panOffset = clampOffset(panOffset + panChange, newScale, pageSize)
+                                event.changes.forEach { it.consume() }
+                            }
+                        } else if (scale > 1.05f && pressed.size == 1) {
+                            val panChange = event.calculatePan()
+                            if (panChange.getDistance() > 1f) {
+                                moved = true
+                                panOffset = clampOffset(panOffset + panChange, scale, pageSize)
+                                event.changes.first().consume()
+                            }
                         }
                     }
-                )
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 4f)
-                    scale = newScale
-                    panOffset = clampOffset(panOffset + pan, newScale, pageSize)
+
+                    if (!isTwoFinger && !moved) {
+                        val upTime = System.currentTimeMillis()
+                        if (upTime - downTime < 300) {
+                            if (downTime - lastTapTime < 350 && (downPos - lastTapPos).getDistance() < 60f) {
+                                if (scale > 1.1f) {
+                                    scale = 1f
+                                    panOffset = Offset.Zero
+                                } else {
+                                    val newScale = 2.2f
+                                    scale = newScale
+                                    val center = Offset(pageSize.width / 2f, pageSize.height / 2f)
+                                    panOffset = clampOffset((center - downPos) * (newScale - 1f), newScale, pageSize)
+                                }
+                                lastTapTime = 0L
+                            } else {
+                                lastTapTime = downTime
+                                lastTapPos = downPos
+                            }
+                        }
+                    }
                 }
             }
     ) {
@@ -362,8 +402,6 @@ private fun PdfPage(
                     selection = selection,
                     selected = selected,
                     error = error,
-                    scale = scale,
-                    panOffset = panOffset,
                 ) {
                     Image(
                         bitmap = page.asImageBitmap(),
@@ -485,6 +523,7 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
     val markwon: Markwon = remember(context, dark, color, accent, settings.font) {
         val density = context.resources.displayMetrics.density
         Markwon.builder(context)
+            .usePlugin(MarkwonInlineParserPlugin.create())
             .usePlugin(TablePlugin.create(tableTheme))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TaskListPlugin.create(accent, if (dark) android.graphics.Color.GRAY else android.graphics.Color.LTGRAY, if (dark) android.graphics.Color.DKGRAY else android.graphics.Color.WHITE))

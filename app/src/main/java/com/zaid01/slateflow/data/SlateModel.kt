@@ -40,7 +40,7 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
             font = it[fontKey] ?: 18f,
             spacing = it[spacingKey] ?: 1.45f,
             themeMode = preferenceEnum(it[themeKey], ThemeMode.SYSTEM),
-            dualSpread = it[dualSpreadKey] ?: true,
+            dualSpread = it[dualSpreadKey] ?: false,
             pdfInvert = it[pdfInvertKey] ?: false,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ReaderSettings())
