@@ -15,4 +15,8 @@ public interface DocumentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) void put(Document document);
     @Query("UPDATE documents SET anchor = :anchor, offset = :offset, fraction = :fraction, progress = :progress WHERE uri = :uri")
     void savePosition(String uri, int anchor, int offset, float fraction, float progress);
+    @Query("UPDATE documents SET isRead = :isRead, progress = CASE WHEN :isRead = 1 THEN 1.0 ELSE 0.0 END WHERE uri = :uri OR sourceUri = :uri")
+    void setRead(String uri, boolean isRead);
+    @Query("UPDATE documents SET isRead = :isRead, progress = CASE WHEN :isRead = 1 THEN 1.0 ELSE 0.0 END WHERE folderUri = :folderUri")
+    void setFolderRead(String folderUri, boolean isRead);
 }

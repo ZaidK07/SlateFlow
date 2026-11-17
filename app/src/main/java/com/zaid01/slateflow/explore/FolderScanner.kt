@@ -19,8 +19,8 @@ internal data class IndexedFolder(
 ) {
     val summary: String get() = FolderSummary(pdfs = pdfs, markdown = markdown).label
 }
-internal data class ScanProgress(val visited: Int, val folders: List<IndexedFolder>)
-internal data class FolderScanResult(val folders: List<IndexedFolder>, val visited: Int, val skipped: Int, val limitReached: Boolean)
+internal data class ScanProgress(val visited: Int, val folders: List<IndexedFolder>, val files: List<IndexedFile> = emptyList())
+internal data class FolderScanResult(val folders: List<IndexedFolder>, val files: List<IndexedFile>, val visited: Int, val skipped: Int, val limitReached: Boolean)
 
 /** Iterative traversal avoids stack overflow and queries each provider directory once. */
 internal class FolderScanner(
@@ -35,6 +35,7 @@ internal class FolderScanner(
         val scheduled = mutableSetOf<String>()
         val visited = mutableSetOf<String>()
         val found = mutableListOf<IndexedFolder>()
+        val foundFiles = mutableListOf<IndexedFile>()
         var skipped = 0
         var limitReached = false
         var lastUpdate = System.nanoTime()
@@ -52,7 +53,7 @@ internal class FolderScanner(
         roots.sortedBy { it.location.name.lowercase(Locale.ROOT) }.forEach {
             enqueue(Pending(it.grantUri, it.location, it.location.name))
         }
-        progress(ScanProgress(0, emptyList()))
+        progress(ScanProgress(0, emptyList(), emptyList()))
         while (queue.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             val pending = queue.removeFirst()
@@ -76,19 +77,30 @@ internal class FolderScanner(
                 } else if (entry.kind == "pdf" || entry.kind == "md") {
                     if (entry.kind == "pdf") pdfs++ else markdown++
                     if (entry.sizeKnown) bytes += entry.size.coerceAtLeast(0) else unknownSizes++
+                    foundFiles += IndexedFile(
+                        uri = entry.uri,
+                        name = entry.name,
+                        kind = entry.kind,
+                        modifiedAt = entry.modifiedAt,
+                        size = entry.size,
+                        sizeKnown = entry.sizeKnown,
+                        folderUri = pending.location.uri,
+                        folderName = pending.displayPath,
+                        grantUri = pending.grantUri,
+                    )
                 }
             }
             if (pdfs + markdown > 0) {
                 found += IndexedFolder(pending.grantUri, pending.location, pending.displayPath, pdfs, markdown, bytes, unknownSizes)
             }
             if (System.nanoTime() - lastUpdate >= 100_000_000L) {
-                progress(ScanProgress(visited.size, found.toList()))
+                progress(ScanProgress(visited.size, found.toList(), foundFiles.toList()))
                 lastUpdate = System.nanoTime()
             }
             yield()
         }
         val sorted = found.sortedBy { it.displayPath.lowercase(Locale.ROOT) }
-        progress(ScanProgress(visited.size, sorted))
-        return FolderScanResult(sorted, visited.size, skipped, limitReached)
+        progress(ScanProgress(visited.size, sorted, foundFiles))
+        return FolderScanResult(sorted, foundFiles, visited.size, skipped, limitReached)
     }
 }

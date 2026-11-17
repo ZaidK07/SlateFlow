@@ -23,6 +23,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zaid01.slateflow.dashboard.DashboardScreen
+import com.zaid01.slateflow.dashboard.HistoryScreen
 import com.zaid01.slateflow.data.*
 import com.zaid01.slateflow.explore.ExploreModel
 import com.zaid01.slateflow.explore.ExploreScreen
@@ -30,7 +31,9 @@ import com.zaid01.slateflow.reader.DocumentReader
 import com.zaid01.slateflow.ui.components.*
 
 private enum class HomeTab(val title: String, val icon: AppSymbol) {
-    DASHBOARD("Dashboard", AppSymbol.DASHBOARD), EXPLORE("Explore", AppSymbol.FOLDER)
+    DASHBOARD("Dashboard", AppSymbol.DASHBOARD),
+    EXPLORE("Explore", AppSymbol.FOLDER),
+    HISTORY("History", AppSymbol.HISTORY),
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3WindowSizeClassApi::class)
@@ -47,7 +50,19 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var focused by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf(HomeTab.DASHBOARD) }
-    LaunchedEffect(document?.uri) { focused = false }
+
+    LaunchedEffect(document?.uri) {
+        focused = false
+        if (document == null) {
+            explorer.resetToRoot()
+        }
+    }
+    LaunchedEffect(tab) {
+        if (tab == HomeTab.EXPLORE) {
+            explorer.resetToRoot()
+        }
+    }
+
     val context = LocalContext.current
     val width = calculateWindowSizeClass(context as Activity).widthSizeClass
     val configuration = LocalConfiguration.current
@@ -57,14 +72,19 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(explorer::addRoot) }
     val openFile = { picker.launch(arrayOf("application/pdf", "text/*", "application/octet-stream")) }
     val addFolder = { treePicker.launch(null) }
+
     BackHandler(document != null || showSettings || (tab == HomeTab.EXPLORE && exploreState.path.isNotEmpty())) {
         when {
             showSettings -> showSettings = false
             focused -> focused = false
-            document != null -> model.home()
+            document != null -> {
+                model.home()
+                explorer.resetToRoot()
+            }
             else -> explorer.back()
         }
     }
+
     if (showSettings) {
         SettingsPage(settings, model::update, clearAppData = {
             try {
@@ -89,7 +109,9 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                             }
                         },
                         navigationIcon = {
-                            if (document != null) IconButton(onClick = model::home) { AppIcon(AppSymbol.BACK, "Back to ${tab.title}") }
+                            if (document != null) IconButton(onClick = { model.home(); explorer.resetToRoot() }) {
+                                AppIcon(AppSymbol.BACK, "Back to ${tab.title}")
+                            }
                         },
                         actions = {
                             if (document != null) TextButton(onClick = { focused = true }) { Text("Focus") }
@@ -103,12 +125,20 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
             bottomBar = {
                 if (!wide && document == null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     HomeTab.entries.forEach { value ->
-                        NavigationBarItem(selected = tab == value, onClick = { tab = value }, icon = { AppIcon(value.icon) }, label = { Text(value.title) })
+                        NavigationBarItem(
+                            selected = tab == value,
+                            onClick = {
+                                tab = value
+                                if (value == HomeTab.EXPLORE) explorer.resetToRoot()
+                            },
+                            icon = { AppIcon(value.icon) },
+                            label = { Text(value.title) }
+                        )
                     }
                 }
             },
             floatingActionButton = {
-                if (!wide && document == null && tab == HomeTab.DASHBOARD) {
+                if (!wide && document == null && (tab == HomeTab.DASHBOARD || tab == HomeTab.HISTORY)) {
                     FloatingActionButton(onClick = openFile) {
                         AppIcon(AppSymbol.ADD, "Open a file")
                     }
@@ -119,7 +149,16 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                 if (wide && document == null) NavigationRail(containerColor = MaterialTheme.colorScheme.background) {
                     Spacer(Modifier.height(16.dp))
                     HomeTab.entries.forEach { value ->
-                        NavigationRailItem(selected = tab == value, onClick = { tab = value }, icon = { AppIcon(value.icon) }, label = { Text(value.title) }, modifier = Modifier.padding(vertical = 4.dp))
+                        NavigationRailItem(
+                            selected = tab == value,
+                            onClick = {
+                                tab = value
+                                if (value == HomeTab.EXPLORE) explorer.resetToRoot()
+                            },
+                            icon = { AppIcon(value.icon) },
+                            label = { Text(value.title) },
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -127,7 +166,26 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                         document != null -> DocumentReader(document!!, settings, expanded, model)
                         tab == HomeTab.DASHBOARD -> DashboardScreen(documents, dashboard, model::customize, { model.open(it.sourceUri.ifBlank { it.uri }.toUri()) }, openFile)
-                        else -> ExploreScreen(explorer, addFolder) { entry, folder -> model.open(entry.uri.toUri(), folder.name, folder.uri) }
+                        tab == HomeTab.HISTORY -> HistoryScreen(
+                            documents = documents,
+                            open = { model.open(it.sourceUri.ifBlank { it.uri }.toUri()) },
+                            remove = model::removeFromHistory,
+                            toggleRead = { uri, isRead -> model.setRead(uri, isRead) },
+                            openFile = openFile
+                        )
+                        else -> ExploreScreen(
+                            model = explorer,
+                            recentDocuments = documents,
+                            addFolder = addFolder,
+                            onMarkRead = { uri, isRead, name, kind, folderName, folderUri ->
+                                model.setRead(uri, isRead, name, kind, folderName, folderUri)
+                            },
+                            onMarkFolderRead = { folderUri, isRead, files ->
+                                model.setFolderRead(folderUri, isRead, files.map { it.uri.toUri() to it.name })
+                            },
+                            open = { entry, folder -> model.open(entry.uri.toUri(), folder.name, folder.uri) },
+                            openIndexedFile = { file -> model.open(file.uri.toUri(), file.folderName, file.folderUri) }
+                        )
                     }
                     if (focused && document != null) FilledTonalButton(onClick = { focused = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { Text("Show controls") }
                 }

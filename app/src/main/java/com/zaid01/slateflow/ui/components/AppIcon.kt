@@ -16,6 +16,9 @@ enum class AppSymbol(val resource: Int) {
     TUNE(R.drawable.ic_tune), GRID(R.drawable.ic_grid), LIST(R.drawable.ic_list),
     REFRESH(R.drawable.ic_refresh), MORE(R.drawable.ic_more), SEARCH(R.drawable.ic_search),
     CHEVRON(R.drawable.ic_chevron), PLAY(R.drawable.ic_play),
+    HISTORY(R.drawable.ic_history), TRASH(R.drawable.ic_trash),
+    MOON(R.drawable.ic_moon), SPREAD(R.drawable.ic_spread),
+    CHECK_CIRCLE(R.drawable.ic_check_circle),
 }
 
 @Composable

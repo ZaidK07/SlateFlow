@@ -17,6 +17,14 @@ internal fun ExploreOptions(settings: ExploreDisplaySettings, update: (ExploreDi
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Explore display", style = MaterialTheme.typography.headlineSmall)
+            Text("View mode", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExploreViewMode.entries.forEach { mode ->
+                    FilterChip(settings.viewMode == mode, { update(settings.copy(viewMode = mode)) }, label = { Text(mode.label) })
+                }
+            }
+            DisplaySwitch("Only show unread", settings.onlyUnread) { update(settings.copy(onlyUnread = it)) }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             DisplaySwitch("Folder path", settings.showPath) { update(settings.copy(showPath = it)) }
             DisplaySwitch("PDF and Markdown counts", settings.showCounts) { update(settings.copy(showCounts = it)) }
             DisplaySwitch("Document size", settings.showSize) { update(settings.copy(showSize = it)) }

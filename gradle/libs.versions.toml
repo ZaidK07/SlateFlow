@@ -20,6 +20,12 @@ androidx-compose-window-size = { module = "androidx.compose.material3:material3-
 markwon-core = { module = "io.noties.markwon:core", version = "4.6.2" }
 markwon-tables = { module = "io.noties.markwon:ext-tables", version = "4.6.2" }
 markwon-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version = "4.6.2" }
+markwon-ext-tasklist = { module = "io.noties.markwon:ext-tasklist", version = "4.6.2" }
+markwon-ext-latex = { module = "io.noties.markwon:ext-latex", version = "4.6.2" }
+markwon-html = { module = "io.noties.markwon:html", version = "4.6.2" }
+markwon-linkify = { module = "io.noties.markwon:linkify", version = "4.6.2" }
+markwon-syntax-highlight = { module = "io.noties.markwon:syntax-highlight", version = "4.6.2" }
+prism4j = { module = "io.noties:prism4j", version = "2.0.0" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

@@ -13,8 +13,8 @@ android {
         applicationId = "com.zaid01.slateflow"
         minSdk = 34
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,6 +24,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -34,6 +35,10 @@ android {
     buildFeatures {
         compose = true
     }
+}
+
+configurations.all {
+    exclude(group = "org.jetbrains", module = "annotations-java5")
 }
 
 dependencies {
@@ -47,6 +52,12 @@ dependencies {
     implementation(libs.markwon.core)
     implementation(libs.markwon.tables)
     implementation(libs.markwon.strikethrough)
+    implementation(libs.markwon.ext.tasklist)
+    implementation(libs.markwon.ext.latex)
+    implementation(libs.markwon.html)
+    implementation(libs.markwon.linkify)
+    implementation(libs.markwon.syntax.highlight)
+    implementation(libs.prism4j)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

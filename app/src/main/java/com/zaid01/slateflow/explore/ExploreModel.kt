@@ -29,6 +29,7 @@ internal data class RootFolder(val grantUri: String, val location: FolderLocatio
 internal data class ExploreState(
     val roots: List<RootFolder> = emptyList(),
     val folders: List<IndexedFolder> = emptyList(),
+    val files: List<IndexedFile> = emptyList(),
     val path: List<FolderLocation> = emptyList(),
     val entries: List<FolderEntry> = emptyList(),
     val loading: Boolean = true,
@@ -48,12 +49,16 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
     private val showSizeKey = booleanPreferencesKey("explore_show_sizes")
     private val showCountsKey = booleanPreferencesKey("explore_show_counts")
     private val sortKey = stringPreferencesKey("explore_sort")
+    private val viewModeKey = stringPreferencesKey("explore_view_mode")
+    private val onlyUnreadKey = booleanPreferencesKey("explore_only_unread")
     val display = application.preferences.data.map { values ->
         ExploreDisplaySettings(
             showPath = values[showPathKey] ?: true,
             showSize = values[showSizeKey] ?: true,
             showCounts = values[showCountsKey] ?: true,
             sort = ExploreSort.entries.firstOrNull { it.name == values[sortKey] } ?: ExploreSort.PATH,
+            viewMode = ExploreViewMode.entries.firstOrNull { it.name == values[viewModeKey] } ?: ExploreViewMode.FOLDERS,
+            onlyUnread = values[onlyUnreadKey] ?: false,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ExploreDisplaySettings())
     private val mutableState = MutableStateFlow(ExploreState())
@@ -72,6 +77,7 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
                 mutableState.value = mutableState.value.copy(
                     roots = mutableState.value.roots.filter { it.grantUri in grants },
                     folders = mutableState.value.folders.filter { it.grantUri in grants },
+                    files = mutableState.value.files.filter { it.grantUri in grants },
                     path = emptyList(), entries = emptyList(),
                 )
                 val generation = ++scanGeneration
@@ -80,8 +86,9 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
                 val cached = indexStore.loadAny()
                 val plan = folderScanPlan(grants, cached?.roots)
                 val visible = (cached?.folders ?: mutableState.value.folders).filter { it.grantUri in available }
+                val visibleFiles = (cached?.files ?: mutableState.value.files).filter { it.grantUri in available }
                 mutableState.value = ExploreState(
-                    roots = roots, folders = visible,
+                    roots = roots, folders = visible, files = visibleFiles,
                     scannedAt = cached?.scannedAt,
                     loading = false,
                     scanMessage = scanNotice(cached?.skipped ?: 0, cached?.limitReached ?: false, roots.count { it.unavailable }),
@@ -91,11 +98,12 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
                     plan.grantsToScan.isNotEmpty() -> startScan(
                         generation, roots.filter { it.grantUri in plan.grantsToScan },
                         previous = if (plan.retainPrevious) visible else emptyList(),
+                        previousFiles = if (plan.retainPrevious) visibleFiles else emptyList(),
                         previousSkipped = if (plan.retainPrevious) cached?.skipped ?: 0 else 0,
                         previousLimited = plan.retainPrevious && cached?.limitReached == true,
                     )
                     else -> {
-                        mutableState.value = mutableState.value.copy(folders = emptyList(), scannedAt = null, scanMessage = null)
+                        mutableState.value = mutableState.value.copy(folders = emptyList(), files = emptyList(), scannedAt = null, scanMessage = null)
                         if (cached != null) persistIndex(SavedFolderIndex(emptySet(), emptyList(), System.currentTimeMillis()), generation)
                     }
                 }
@@ -127,8 +135,15 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
                 it[showSizeKey] = settings.showSize
                 it[showCountsKey] = settings.showCounts
                 it[sortKey] = settings.sort.name
+                it[viewModeKey] = settings.viewMode.name
+                it[onlyUnreadKey] = settings.onlyUnread
             }
         }
+    }
+
+    fun resetToRoot() {
+        directoryJob?.cancel()
+        mutableState.value = mutableState.value.copy(path = emptyList(), entries = emptyList(), loading = false, message = null)
     }
 
     fun removeRoot(grantUri: String) {
@@ -153,7 +168,11 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
             val roots = resolveRoots(grants)
             if (generation != scanGeneration) return@launch
             val available = roots.filterNot { it.unavailable }.map { it.grantUri }.toSet()
-            mutableState.value = mutableState.value.copy(roots = roots, folders = mutableState.value.folders.filter { it.grantUri in available })
+            mutableState.value = mutableState.value.copy(
+                roots = roots,
+                folders = mutableState.value.folders.filter { it.grantUri in available },
+                files = mutableState.value.files.filter { it.grantUri in available },
+            )
             startScan(generation)
         }
         if (mutableState.value.path.isNotEmpty()) navigate(mutableState.value.path)
@@ -169,13 +188,14 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
         generation: Int,
         selectedRoots: List<RootFolder> = mutableState.value.roots,
         previous: List<IndexedFolder> = emptyList(),
+        previousFiles: List<IndexedFile> = emptyList(),
         previousSkipped: Int = 0,
         previousLimited: Boolean = false,
     ) {
         scanJob?.cancel()
         val roots = mutableState.value.roots
         if (roots.isEmpty()) {
-            mutableState.value = mutableState.value.copy(scanning = false, folders = emptyList(), scannedAt = null)
+            mutableState.value = mutableState.value.copy(scanning = false, folders = emptyList(), files = emptyList(), scannedAt = null)
             return
         }
         mutableState.value = mutableState.value.copy(scanning = true, visited = 0, scanMessage = null)
@@ -190,24 +210,26 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
                                 mutableState.value = mutableState.value.copy(
                                     visited = progress.visited,
                                     folders = if (hadCachedResults) mutableState.value.folders else progress.folders,
+                                    files = if (hadCachedResults) mutableState.value.files else progress.files,
                                 )
                             }
                         }
                     }
                 }
                 if (generation != scanGeneration) return@launch
-                android.util.Log.d("SlateFlowScan", "Scanned ${result.visited} folders; indexed ${result.folders.size}; skipped ${result.skipped}; ${android.os.SystemClock.elapsedRealtime() - startedAt} ms")
+                android.util.Log.d("SlateFlowScan", "Scanned ${result.visited} folders; indexed ${result.folders.size}; files ${result.files.size}; skipped ${result.skipped}; ${android.os.SystemClock.elapsedRealtime() - startedAt} ms")
                 val completedAt = System.currentTimeMillis()
                 val folders = withContext(Dispatchers.IO) {
                     mergeIndexedFolders(previous, result.folders) { DocumentIdentity.key(Uri.parse(it)) }
                 }
+                val allFiles = (previousFiles + result.files).distinctBy { it.uri }
                 val skipped = previousSkipped + result.skipped
                 val limited = previousLimited || result.limitReached
                 mutableState.value = mutableState.value.copy(
-                    folders = folders, scanning = false, visited = result.visited,
+                    folders = folders, files = allFiles, scanning = false, visited = result.visited,
                     scannedAt = completedAt, scanMessage = scanNotice(skipped, limited, roots.count { it.unavailable }),
                 )
-                persistIndex(SavedFolderIndex(roots.map { it.grantUri }.toSet(), folders, completedAt, skipped, limited), generation)
+                persistIndex(SavedFolderIndex(roots.map { it.grantUri }.toSet(), folders, completedAt, allFiles, skipped, limited), generation)
             } catch (exception: CancellationException) { throw exception }
             catch (exception: Exception) {
                 if (generation == scanGeneration) mutableState.value = mutableState.value.copy(scanning = false, scanMessage = "The scan could not finish. Refresh to try again.")

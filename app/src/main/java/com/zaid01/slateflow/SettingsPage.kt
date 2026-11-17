@@ -52,6 +52,23 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, cle
                         Text(if (settings.dynamic) "System palette is active" else "Nexus · Cool surfaces, blue details, and fresh green accents", Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
+                SettingsGroup("PDF Reader", "Options for viewing PDFs.") {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Two-page spread in landscape", style = MaterialTheme.typography.titleMedium)
+                            Text("Show two pages side-by-side on wide tablet landscape screens.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = settings.dualSpread, onCheckedChange = { update(settings.copy(dualSpread = it)) })
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Night reading (Invert colors)", style = MaterialTheme.typography.titleMedium)
+                            Text("Inverts white PDF backgrounds to dark surfaces for comfortable night reading.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = settings.pdfInvert, onCheckedChange = { update(settings.copy(pdfInvert = it)) })
+                    }
+                }
                 SettingsGroup("Markdown", "Set the spacing and typography for your documents.") {
                     SettingSlider("Side margins", "dp", settings.margin, 16f..160f) { update(settings.copy(margin = it)) }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -69,7 +86,7 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, cle
                     Text("Remove reading history, saved positions, folder indexes, scan locations, and preferences.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = { confirmReset = true }, border = BorderStroke(1.dp, MaterialTheme.colorScheme.error), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Clear app data") }
                 }
-                Text("SlateFlow 1.2.1  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("SlateFlow 1.3.1  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

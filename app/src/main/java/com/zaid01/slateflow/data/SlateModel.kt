@@ -17,7 +17,7 @@ data class ReadingPosition(val anchor: Int = 0, val offset: Int = 0, val fractio
 private data class PositionWrite(val uri: String, val position: ReadingPosition, val barrier: CompletableDeferred<Unit>? = null)
 
 class SlateModel(application: Application) : AndroidViewModel(application) {
-    private val db = Room.databaseBuilder(application, SlateDatabase::class.java, "slateflow.db").addMigrations(SlateDatabase.MIGRATION_1_2).build()
+    private val db = Room.databaseBuilder(application, SlateDatabase::class.java, "slateflow.db").addMigrations(SlateDatabase.MIGRATION_1_2, SlateDatabase.MIGRATION_2_3).build()
     private val dao = db.documents()
     private val dynamicKey = booleanPreferencesKey("dynamic_color")
     private val marginKey = floatPreferencesKey("markdown_margin")
@@ -25,6 +25,8 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
     private val spacingKey = floatPreferencesKey("markdown_spacing")
     private val activeKey = stringPreferencesKey("active_document")
     private val themeKey = stringPreferencesKey("theme_mode")
+    private val dualSpreadKey = booleanPreferencesKey("pdf_dual_spread")
+    private val pdfInvertKey = booleanPreferencesKey("pdf_invert")
     private val groupKey = stringPreferencesKey("history_group")
     private val sortKey = stringPreferencesKey("history_sort")
     private val layoutKey = stringPreferencesKey("history_layout")
@@ -38,6 +40,8 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
             font = it[fontKey] ?: 18f,
             spacing = it[spacingKey] ?: 1.45f,
             themeMode = preferenceEnum(it[themeKey], ThemeMode.SYSTEM),
+            dualSpread = it[dualSpreadKey] ?: true,
+            pdfInvert = it[pdfInvertKey] ?: false,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ReaderSettings())
     val dashboard = application.preferences.data.map {
@@ -197,11 +201,97 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+    fun removeFromHistory(uri: String) {
+        viewModelScope.launch {
+            try {
+                flush()
+                val barrier = CompletableDeferred<Unit>()
+                writes.send(PositionWrite("", ReadingPosition(), barrier))
+                barrier.await()
+                withContext(Dispatchers.IO) { dao.remove(uri) }
+                if (active.value?.uri == uri) active.value = null
+                if (latest?.uri == uri) { idleSave?.cancel(); latest = null; lastQueued = null }
+                getApplication<Application>().preferences.edit { if (it[activeKey] == uri) it.remove(activeKey) }
+                refresh()
+            } catch (e: Exception) {
+                error.value = "Could not remove this document from history."
+            }
+        }
+    }
+
+    fun setRead(uri: Uri, isRead: Boolean, name: String? = null, kind: String? = null, folderName: String? = null, folderUri: String? = null) {
+        viewModelScope.launch {
+            try {
+                flush()
+                withContext(Dispatchers.IO) {
+                    val key = DocumentIdentity.key(uri)
+                    val existing = dao.findByKey(key) ?: dao.find(uri.toString())
+                    if (existing != null) {
+                        dao.setRead(existing.uri, isRead)
+                    } else if (isRead) {
+                        val doc = Document().apply {
+                            this.uri = uri.toString()
+                            this.name = name ?: uri.lastPathSegment.orEmpty()
+                            this.kind = kind ?: if (this.name.endsWith(".pdf", true)) "pdf" else "md"
+                            this.documentKey = key
+                            this.sourceUri = uri.toString()
+                            this.folderName = folderName.orEmpty()
+                            this.folderUri = folderUri.orEmpty()
+                            this.openedAt = System.currentTimeMillis()
+                            this.progress = 1.0f
+                            this.isRead = true
+                        }
+                        dao.put(doc)
+                    }
+                }
+                refresh()
+            } catch (e: Exception) {
+                error.value = "Could not update read status."
+            }
+        }
+    }
+
+    fun setFolderRead(folderUri: String, isRead: Boolean, files: List<Pair<Uri, String>>) {
+        viewModelScope.launch {
+            try {
+                flush()
+                withContext(Dispatchers.IO) {
+                    dao.setFolderRead(folderUri, isRead)
+                    if (isRead) {
+                        for ((fileUri, fileName) in files) {
+                            val key = DocumentIdentity.key(fileUri)
+                            val existing = dao.findByKey(key) ?: dao.find(fileUri.toString())
+                            if (existing == null) {
+                                val doc = Document().apply {
+                                    this.uri = fileUri.toString()
+                                    this.name = fileName
+                                    this.kind = if (fileName.endsWith(".pdf", true)) "pdf" else "md"
+                                    this.documentKey = key
+                                    this.sourceUri = fileUri.toString()
+                                    this.folderUri = folderUri
+                                    this.openedAt = System.currentTimeMillis()
+                                    this.progress = 1.0f
+                                    this.isRead = true
+                                }
+                                dao.put(doc)
+                            }
+                        }
+                    }
+                }
+                refresh()
+            } catch (e: Exception) {
+                error.value = "Could not update folder read status."
+            }
+        }
+    }
+
     fun update(settings: ReaderSettings) { viewModelScope.launch {
         getApplication<Application>().preferences.edit {
             it[dynamicKey] = settings.dynamic; it[marginKey] = settings.margin
             it[fontKey] = settings.font; it[spacingKey] = settings.spacing
             it[themeKey] = settings.themeMode.name
+            it[dualSpreadKey] = settings.dualSpread
+            it[pdfInvertKey] = settings.pdfInvert
         }
     } }
 }

@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase;
 import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
-@Database(entities = {Document.class}, version = 2, exportSchema = false)
+@Database(entities = {Document.class}, version = 3, exportSchema = false)
 public abstract class SlateDatabase extends RoomDatabase {
     public abstract DocumentDao documents();
 
@@ -26,6 +26,12 @@ public abstract class SlateDatabase extends RoomDatabase {
                 }
             }
             db.execSQL("CREATE INDEX IF NOT EXISTS index_documents_documentKey ON documents(documentKey)");
+        }
+    };
+
+    public static final Migration MIGRATION_2_3 = new Migration(2, 3) {
+        @Override public void migrate(@NonNull SupportSQLiteDatabase db) {
+            db.execSQL("ALTER TABLE documents ADD COLUMN isRead INTEGER NOT NULL DEFAULT 0");
         }
     };
 }

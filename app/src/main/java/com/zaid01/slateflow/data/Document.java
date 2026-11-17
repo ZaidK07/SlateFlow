@@ -20,4 +20,5 @@ public class Document {
     public int offset;
     public float fraction;
     public float progress;
+    @ColumnInfo(defaultValue = "0") public boolean isRead;
 }

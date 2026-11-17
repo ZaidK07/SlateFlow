@@ -19,6 +19,17 @@ internal data class FolderEntry(
     val size: Long = 0,
     val sizeKnown: Boolean = true,
 )
+internal data class IndexedFile(
+    val uri: String,
+    val name: String,
+    val kind: String,
+    val modifiedAt: Long = 0,
+    val size: Long = 0,
+    val sizeKnown: Boolean = true,
+    val folderUri: String = "",
+    val folderName: String = "",
+    val grantUri: String = "",
+)
 internal data class FolderSummary(val folders: Int = 0, val pdfs: Int = 0, val markdown: Int = 0) {
     val label: String get() = buildList {
         if (folders > 0) add("$folders ${if (folders == 1) "folder" else "folders"}")
