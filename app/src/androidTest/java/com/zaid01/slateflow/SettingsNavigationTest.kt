@@ -17,6 +17,9 @@ class SettingsNavigationTest {
 
     @Test fun dashboardAndExploreTabsNavigateWithoutTheOldSidebar() {
         compose.onAllNodesWithText("Explore").onLast().performClick()
+        if (compose.onAllNodesWithText("Folders").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onAllNodesWithText("Folders").onFirst().performClick()
+        }
         compose.onNodeWithText("Your folders").assertIsDisplayed()
         compose.onNodeWithContentDescription("Explore display options").performClick()
         compose.onNodeWithText("Explore display").assertIsDisplayed()

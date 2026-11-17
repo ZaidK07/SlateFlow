@@ -11,12 +11,15 @@ import androidx.compose.runtime.SideEffect
 import com.zaid01.slateflow.ui.theme.isReaderDark
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zaid01.slateflow.data.SlateModel
+import com.zaid01.slateflow.explore.ExploreModel
 import com.zaid01.slateflow.ui.theme.SlateFlowTheme
 
 class MainActivity : ComponentActivity() {
     private val model: SlateModel by viewModels()
+    private val exploreModel: ExploreModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ru.noties.jlatexmath.JLatexMathAndroid.init(applicationContext)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         setContent {
             val settings by model.settings.collectAsStateWithLifecycle()
@@ -30,6 +33,10 @@ class MainActivity : ComponentActivity() {
             }
             SlateFlowTheme(settings.dynamic, settings.themeMode) { SlateApp(model, settings) }
         }
+    }
+    override fun onResume() {
+        super.onResume()
+        exploreModel.checkPermissionAndScan()
     }
     override fun onPause() { model.flush(); super.onPause() }
 }

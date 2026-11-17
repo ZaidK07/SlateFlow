@@ -38,6 +38,7 @@ internal data class ExploreState(
     val scannedAt: Long? = null,
     val message: String? = null,
     val scanMessage: String? = null,
+    val hasStoragePermission: Boolean = true,
 )
 
 internal class ExploreModel(application: Application) : AndroidViewModel(application) {
@@ -69,43 +70,113 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
     private var scanGeneration = 0
 
     init {
+        val hasPerm = DeviceStorageScanner.hasAllFilesAccess()
+        viewModelScope.launch {
+            val cached = indexStore.loadAny()
+            if (cached != null) {
+                mutableState.value = ExploreState(
+                    folders = cached.folders,
+                    files = cached.files,
+                    scannedAt = cached.scannedAt,
+                    loading = false,
+                    hasStoragePermission = hasPerm
+                )
+            } else {
+                mutableState.value = mutableState.value.copy(
+                    loading = false,
+                    hasStoragePermission = hasPerm
+                )
+            }
+            if (hasPerm) {
+                startDeviceScan()
+            }
+        }
         viewModelScope.launch {
             application.preferences.data.map { it[rootsKey].orEmpty() }.distinctUntilChanged().collectLatest { grants ->
-                scanJob?.cancel()
-                rootRefreshJob?.cancel()
-                directoryJob?.cancel()
-                mutableState.value = mutableState.value.copy(
-                    roots = mutableState.value.roots.filter { it.grantUri in grants },
-                    folders = mutableState.value.folders.filter { it.grantUri in grants },
-                    files = mutableState.value.files.filter { it.grantUri in grants },
-                    path = emptyList(), entries = emptyList(),
-                )
-                val generation = ++scanGeneration
-                val roots = resolveRoots(grants.sorted())
-                val available = roots.filterNot { it.unavailable }.map { it.grantUri }.toSet()
-                val cached = indexStore.loadAny()
-                val plan = folderScanPlan(grants, cached?.roots)
-                val visible = (cached?.folders ?: mutableState.value.folders).filter { it.grantUri in available }
-                val visibleFiles = (cached?.files ?: mutableState.value.files).filter { it.grantUri in available }
-                mutableState.value = ExploreState(
-                    roots = roots, folders = visible, files = visibleFiles,
-                    scannedAt = cached?.scannedAt,
-                    loading = false,
-                    scanMessage = scanNotice(cached?.skipped ?: 0, cached?.limitReached ?: false, roots.count { it.unavailable }),
-                )
-                when {
-                    plan.reuseIndex -> Unit
-                    plan.grantsToScan.isNotEmpty() -> startScan(
-                        generation, roots.filter { it.grantUri in plan.grantsToScan },
-                        previous = if (plan.retainPrevious) visible else emptyList(),
-                        previousFiles = if (plan.retainPrevious) visibleFiles else emptyList(),
-                        previousSkipped = if (plan.retainPrevious) cached?.skipped ?: 0 else 0,
-                        previousLimited = plan.retainPrevious && cached?.limitReached == true,
+                if (!DeviceStorageScanner.hasAllFilesAccess()) {
+                    scanJob?.cancel()
+                    rootRefreshJob?.cancel()
+                    directoryJob?.cancel()
+                    mutableState.value = mutableState.value.copy(
+                        roots = mutableState.value.roots.filter { it.grantUri in grants },
+                        folders = mutableState.value.folders.filter { it.grantUri in grants },
+                        files = mutableState.value.files.filter { it.grantUri in grants },
+                        path = emptyList(), entries = emptyList(),
                     )
-                    else -> {
-                        mutableState.value = mutableState.value.copy(folders = emptyList(), files = emptyList(), scannedAt = null, scanMessage = null)
-                        if (cached != null) persistIndex(SavedFolderIndex(emptySet(), emptyList(), System.currentTimeMillis()), generation)
+                    val generation = ++scanGeneration
+                    val roots = resolveRoots(grants.sorted())
+                    val available = roots.filterNot { it.unavailable }.map { it.grantUri }.toSet()
+                    val cached = indexStore.loadAny()
+                    val visible = (cached?.folders ?: mutableState.value.folders).filter { it.grantUri in available }
+                    val visibleFiles = (cached?.files ?: mutableState.value.files).filter { it.grantUri in available }
+                    mutableState.value = ExploreState(
+                        roots = roots, folders = visible, files = visibleFiles,
+                        scannedAt = cached?.scannedAt,
+                        loading = false,
+                        scanMessage = scanNotice(cached?.skipped ?: 0, cached?.limitReached ?: false, roots.count { it.unavailable }),
+                        hasStoragePermission = false,
+                    )
+                    if (available.isNotEmpty()) {
+                        startScan(
+                            generation, roots.filter { it.grantUri in available },
+                            previous = visible,
+                            previousFiles = visibleFiles,
+                            previousSkipped = cached?.skipped ?: 0,
+                            previousLimited = cached?.limitReached == true,
+                        )
                     }
+                }
+            }
+        }
+    }
+
+    fun checkPermissionAndScan() {
+        val hasPermission = DeviceStorageScanner.hasAllFilesAccess()
+        mutableState.value = mutableState.value.copy(hasStoragePermission = hasPermission)
+        if (hasPermission && !mutableState.value.scanning) {
+            startDeviceScan()
+        }
+    }
+
+    fun requestStoragePermission(context: android.content.Context) {
+        val intent = DeviceStorageScanner.requestAllFilesAccessIntent(context)
+        context.startActivity(intent)
+    }
+
+    fun startDeviceScan() {
+        scanJob?.cancel()
+        val generation = ++scanGeneration
+        mutableState.value = mutableState.value.copy(scanning = true, visited = 0, scanMessage = null, hasStoragePermission = true)
+        val hadCached = mutableState.value.folders.isNotEmpty()
+        scanJob = viewModelScope.launch {
+            try {
+                val result = DeviceStorageScanner.scanDevice { visited, folders, files ->
+                    withContext(Dispatchers.Main.immediate) {
+                        if (generation == scanGeneration) {
+                            mutableState.value = mutableState.value.copy(
+                                visited = visited,
+                                folders = if (hadCached) mutableState.value.folders else folders,
+                                files = if (hadCached) mutableState.value.files else files
+                            )
+                        }
+                    }
+                }
+                if (generation != scanGeneration) return@launch
+                val completedAt = System.currentTimeMillis()
+                mutableState.value = mutableState.value.copy(
+                    folders = result.folders,
+                    files = result.files,
+                    scanning = false,
+                    visited = result.visited,
+                    scannedAt = completedAt,
+                    scanMessage = null,
+                    hasStoragePermission = true
+                )
+                persistIndex(SavedFolderIndex(setOf("device://storage"), result.folders, completedAt, result.files, 0, false), generation)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (generation == scanGeneration) {
+                    mutableState.value = mutableState.value.copy(scanning = false, scanMessage = "The scan could not finish. Tap refresh to try again.")
                 }
             }
         }
@@ -159,21 +230,25 @@ internal class ExploreModel(application: Application) : AndroidViewModel(applica
     fun breadcrumb(index: Int) = navigate(mutableState.value.path.take(index + 1))
 
     fun refresh() {
-        scanJob?.cancel()
-        rootRefreshJob?.cancel()
-        val generation = ++scanGeneration
-        val grants = mutableState.value.roots.map { it.grantUri }
-        mutableState.value = mutableState.value.copy(scanning = grants.isNotEmpty(), visited = 0, scanMessage = null)
-        rootRefreshJob = viewModelScope.launch {
-            val roots = resolveRoots(grants)
-            if (generation != scanGeneration) return@launch
-            val available = roots.filterNot { it.unavailable }.map { it.grantUri }.toSet()
-            mutableState.value = mutableState.value.copy(
-                roots = roots,
-                folders = mutableState.value.folders.filter { it.grantUri in available },
-                files = mutableState.value.files.filter { it.grantUri in available },
-            )
-            startScan(generation)
+        if (DeviceStorageScanner.hasAllFilesAccess()) {
+            startDeviceScan()
+        } else {
+            scanJob?.cancel()
+            rootRefreshJob?.cancel()
+            val generation = ++scanGeneration
+            val grants = mutableState.value.roots.map { it.grantUri }
+            mutableState.value = mutableState.value.copy(scanning = grants.isNotEmpty(), visited = 0, scanMessage = null)
+            rootRefreshJob = viewModelScope.launch {
+                val roots = resolveRoots(grants)
+                if (generation != scanGeneration) return@launch
+                val available = roots.filterNot { it.unavailable }.map { it.grantUri }.toSet()
+                mutableState.value = mutableState.value.copy(
+                    roots = roots,
+                    folders = mutableState.value.folders.filter { it.grantUri in available },
+                    files = mutableState.value.files.filter { it.grantUri in available },
+                )
+                startScan(generation)
+            }
         }
         if (mutableState.value.path.isNotEmpty()) navigate(mutableState.value.path)
     }

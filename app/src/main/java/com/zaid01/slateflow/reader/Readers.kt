@@ -13,12 +13,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -299,68 +297,19 @@ private fun PdfPage(
         return Offset(offset.x.coerceIn(-maxPanX, maxPanX), offset.y.coerceIn(-maxPanY, maxPanY))
     }
 
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        val newScale = (scale * zoomChange).coerceIn(1f, 4f)
+        scale = newScale
+        panOffset = clampOffset(panOffset + panChange, newScale, pageSize)
+    }
+
+    val isZoomed = scale > 1.05f
+
     BoxWithConstraints(
         modifier
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .onSizeChanged { pageSize = it }
-            .pointerInput(Unit) {
-                var lastTapTime = 0L
-                var lastTapPos = Offset.Zero
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val downTime = System.currentTimeMillis()
-                    val downPos = down.position
-                    var isTwoFinger = false
-                    var moved = false
-
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val pressed = event.changes.filter { it.pressed }
-                        if (pressed.isEmpty()) break
-
-                        if (pressed.size >= 2) {
-                            isTwoFinger = true
-                            val zoomChange = event.calculateZoom()
-                            val panChange = event.calculatePan()
-                            if (zoomChange != 1f || panChange != Offset.Zero) {
-                                val newScale = (scale * zoomChange).coerceIn(1f, 4f)
-                                scale = newScale
-                                panOffset = clampOffset(panOffset + panChange, newScale, pageSize)
-                                event.changes.forEach { it.consume() }
-                            }
-                        } else if (scale > 1.05f && pressed.size == 1) {
-                            val panChange = event.calculatePan()
-                            if (panChange.getDistance() > 1f) {
-                                moved = true
-                                panOffset = clampOffset(panOffset + panChange, scale, pageSize)
-                                event.changes.first().consume()
-                            }
-                        }
-                    }
-
-                    if (!isTwoFinger && !moved) {
-                        val upTime = System.currentTimeMillis()
-                        if (upTime - downTime < 300) {
-                            if (downTime - lastTapTime < 350 && (downPos - lastTapPos).getDistance() < 60f) {
-                                if (scale > 1.1f) {
-                                    scale = 1f
-                                    panOffset = Offset.Zero
-                                } else {
-                                    val newScale = 2.2f
-                                    scale = newScale
-                                    val center = Offset(pageSize.width / 2f, pageSize.height / 2f)
-                                    panOffset = clampOffset((center - downPos) * (newScale - 1f), newScale, pageSize)
-                                }
-                                lastTapTime = 0L
-                            } else {
-                                lastTapTime = downTime
-                                lastTapPos = downPos
-                            }
-                        }
-                    }
-                }
-            }
     ) {
         val width = with(LocalDensity.current) { maxWidth.roundToPx() }
         var failure by remember { mutableStateOf(false) }
@@ -522,6 +471,7 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
 
     val markwon: Markwon = remember(context, dark, color, accent, settings.font) {
         val density = context.resources.displayMetrics.density
+        ru.noties.jlatexmath.JLatexMathAndroid.init(context.applicationContext)
         Markwon.builder(context)
             .usePlugin(MarkwonInlineParserPlugin.create())
             .usePlugin(TablePlugin.create(tableTheme))
@@ -531,6 +481,7 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
             .usePlugin(LinkifyPlugin.create())
             .usePlugin(JLatexMathPlugin.create(settings.font * context.resources.displayMetrics.scaledDensity) { builder ->
                 builder.inlinesEnabled(true)
+                builder.errorHandler { _, _ -> null }
                 builder.theme().backgroundProvider { android.graphics.drawable.ColorDrawable(if (dark) android.graphics.Color.argb(40, 255, 255, 255) else android.graphics.Color.argb(20, 0, 0, 0)) }
             })
             .usePlugin(syntaxPlugin)

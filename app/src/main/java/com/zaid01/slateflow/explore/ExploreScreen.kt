@@ -31,6 +31,7 @@ internal fun ExploreScreen(
     open: (FolderEntry, FolderLocation) -> Unit,
     openIndexedFile: (IndexedFile) -> Unit = {},
 ) {
+    val context = LocalContext.current
     val state by model.state.collectAsStateWithLifecycle()
     val display by model.display.collectAsStateWithLifecycle()
     var search by rememberSaveable { mutableStateOf("") }
@@ -96,6 +97,27 @@ internal fun ExploreScreen(
                     TextButton(onClick = { model.breadcrumb(-1) }) { AppIcon(AppSymbol.BACK); Spacer(Modifier.width(8.dp)); Text("All discovered folders") }
                     Text(state.path.last().name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
+                    if (!state.hasStoragePermission) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Automatic storage discovery", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                    Text("Allow all files access to automatically find all PDF and Markdown documents across your tablet without picking folders.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                                FilledTonalButton(onClick = { model.requestStoragePermission(context) }) {
+                                    Text("Allow access")
+                                }
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         AssistChip(
                             onClick = { locations = true },

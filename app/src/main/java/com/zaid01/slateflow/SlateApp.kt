@@ -86,17 +86,26 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
     }
 
     if (showSettings) {
-        SettingsPage(settings, model::update, clearAppData = {
-            try {
-                if (!context.getSystemService(android.app.ActivityManager::class.java).clearApplicationUserData()) {
+        SettingsPage(
+            settings = settings,
+            update = model::update,
+            markAllRead = { isRead ->
+                val files = explorer.state.value.files.map { it.uri.toUri() to it.name }
+                model.markAllRead(isRead, files)
+            },
+            clearAppData = {
+                try {
+                    if (!context.getSystemService(android.app.ActivityManager::class.java).clearApplicationUserData()) {
+                        showSettings = false
+                        model.error.value = "Android could not clear the app data. Try again."
+                    }
+                } catch (exception: Exception) {
                     showSettings = false
                     model.error.value = "Android could not clear the app data. Try again."
                 }
-            } catch (exception: Exception) {
-                showSettings = false
-                model.error.value = "Android could not clear the app data. Try again."
-            }
-        }) { showSettings = false }
+            },
+            back = { showSettings = false }
+        )
     } else {
         Scaffold(
             topBar = {

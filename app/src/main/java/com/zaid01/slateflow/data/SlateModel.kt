@@ -107,12 +107,18 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
                     val resolver = getApplication<Application>().contentResolver
                     val identity = DocumentIdentity.key(uri)
                     knownDocument = dao.findByKey(identity) ?: dao.find(uri.toString())
-                    if (!android.provider.DocumentsContract.isTreeUri(uri) &&
+                    if (uri.scheme == "content" && !android.provider.DocumentsContract.isTreeUri(uri) &&
                         resolver.persistedUriPermissions.none { it.uri == uri && it.isReadPermission }) {
-                        resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        try {
+                            resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        } catch (_: Exception) {}
                     }
                     resolver.requireReadable(uri)
-                    val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
+                    val name = if (uri.scheme == "content") {
+                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: uri.lastPathSegment.orEmpty()
+                    } else {
+                        uri.lastPathSegment.orEmpty().substringAfterLast('/')
+                    }
                     val type = resolver.getType(uri)
                     val kind = when {
                         type == "application/pdf" || name.endsWith(".pdf", true) -> "pdf"
@@ -281,6 +287,39 @@ class SlateModel(application: Application) : AndroidViewModel(application) {
                 refresh()
             } catch (e: Exception) {
                 error.value = "Could not update folder read status."
+            }
+        }
+    }
+
+    fun markAllRead(isRead: Boolean, files: List<Pair<Uri, String>> = emptyList()) {
+        viewModelScope.launch {
+            try {
+                flush()
+                withContext(Dispatchers.IO) {
+                    dao.setAllRead(isRead)
+                    if (isRead) {
+                        for ((fileUri, fileName) in files) {
+                            val key = DocumentIdentity.key(fileUri)
+                            val existing = dao.findByKey(key) ?: dao.find(fileUri.toString())
+                            if (existing == null) {
+                                val doc = Document().apply {
+                                    this.uri = fileUri.toString()
+                                    this.name = fileName
+                                    this.kind = if (fileName.endsWith(".pdf", true)) "pdf" else "md"
+                                    this.documentKey = key
+                                    this.sourceUri = fileUri.toString()
+                                    this.openedAt = System.currentTimeMillis()
+                                    this.progress = 1.0f
+                                    this.isRead = true
+                                }
+                                dao.put(doc)
+                            }
+                        }
+                    }
+                }
+                refresh()
+            } catch (e: Exception) {
+                error.value = "Could not update read status for all documents."
             }
         }
     }

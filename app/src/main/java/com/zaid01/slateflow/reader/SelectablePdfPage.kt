@@ -2,7 +2,7 @@ package com.zaid01.slateflow.reader
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -46,27 +46,28 @@ internal fun SelectablePdfPage(
         }
     }
 
-    Box(Modifier.fillMaxWidth().onSizeChanged { size = it }.pointerInput(engine, page) {
-        detectDragGesturesAfterLongPress(
-            onDragStart = { position ->
-                anchor = null
-                request?.cancel()
-                request = scope.launch {
-                    try {
-                        val word = engine.selectWord(page, position.x / size.width.coerceAtLeast(1), position.y / size.height.coerceAtLeast(1))
-                        anchor = word?.start
-                        currentSelected(word)
-                        if (word == null) currentError("No selectable text here. This part may be an image.")
-                    } catch (exception: CancellationException) { throw exception }
-                    catch (exception: Exception) { currentError(exception.message ?: "Could not select this text.") }
-                }
-            },
-            onDrag = { change, _ ->
-                change.consume()
-                anchor?.let { extend(it, change.position) }
-            },
-        )
-    }) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .onSizeChanged { size = it }
+            .pointerInput(engine, page) {
+                detectTapGestures(
+                    onLongPress = { position ->
+                        anchor = null
+                        request?.cancel()
+                        request = scope.launch {
+                            try {
+                                val word = engine.selectWord(page, position.x / size.width.coerceAtLeast(1), position.y / size.height.coerceAtLeast(1))
+                                anchor = word?.start
+                                currentSelected(word)
+                                if (word == null) currentError("No selectable text here. This part may be an image.")
+                            } catch (exception: CancellationException) { throw exception }
+                            catch (exception: Exception) { currentError(exception.message ?: "Could not select this text.") }
+                        }
+                    }
+                )
+            }
+    ) {
         content()
         if (selection != null && selection.bounds.isNotEmpty()) {
             val color = MaterialTheme.colorScheme.secondary

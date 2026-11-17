@@ -14,19 +14,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zaid01.slateflow.data.ReaderSettings
 import com.zaid01.slateflow.data.ThemeMode
+import com.zaid01.slateflow.ui.components.AppIcon
+import com.zaid01.slateflow.ui.components.AppSymbol
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, clearAppData: () -> Unit, back: () -> Unit) {
+fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, markAllRead: (Boolean) -> Unit = {}, clearAppData: () -> Unit, back: () -> Unit) {
     var confirmReset by remember { mutableStateOf(false) }
+    var confirmMarkAllRead by remember { mutableStateOf(false) }
+    var confirmMarkAllUnread by remember { mutableStateOf(false) }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Settings", fontWeight = FontWeight.SemiBold) }, navigationIcon = {
             IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_back), contentDescription = "Back") }
         }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
     }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-            Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        val scrollState = rememberScrollState()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(scrollState),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                Modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Your reading space", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                     Text("A few small adjustments. A more comfortable read.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -82,11 +99,33 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, cle
                     Text("Your position is saved while you scroll, when you stop, and when you leave the reader.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Files stay on your device. SlateFlow uses the access you grant in the Android file picker.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                SettingsGroup("Reading progress", "Mark all documents as read or unread across your library.") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(
+                            onClick = { confirmMarkAllRead = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            AppIcon(AppSymbol.CHECK_CIRCLE, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Mark all read")
+                        }
+                        OutlinedButton(
+                            onClick = { confirmMarkAllUnread = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            AppIcon(AppSymbol.MINUS, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Mark all unread")
+                        }
+                    }
+                }
                 SettingsGroup("App data", "Clear SlateFlow and start fresh.") {
                     Text("Remove reading history, saved positions, folder indexes, scan locations, and preferences.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = { confirmReset = true }, border = BorderStroke(1.dp, MaterialTheme.colorScheme.error), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Clear app data") }
                 }
-                Text("SlateFlow 1.3.1  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("SlateFlow 1.3.2  ·  Made for a quieter read", Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -97,6 +136,24 @@ fun SettingsPage(settings: ReaderSettings, update: (ReaderSettings) -> Unit, cle
         dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
         confirmButton = {
             TextButton(onClick = { confirmReset = false; clearAppData() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Clear everything") }
+        },
+    )
+    if (confirmMarkAllRead) AlertDialog(
+        onDismissRequest = { confirmMarkAllRead = false },
+        title = { Text("Mark all as read?") },
+        text = { Text("All documents across your library and reading history will be marked as read.") },
+        dismissButton = { TextButton(onClick = { confirmMarkAllRead = false }) { Text("Cancel") } },
+        confirmButton = {
+            TextButton(onClick = { confirmMarkAllRead = false; markAllRead(true) }) { Text("Mark all read") }
+        },
+    )
+    if (confirmMarkAllUnread) AlertDialog(
+        onDismissRequest = { confirmMarkAllUnread = false },
+        title = { Text("Mark all as unread?") },
+        text = { Text("Reading progress will be reset to unread for all documents.") },
+        dismissButton = { TextButton(onClick = { confirmMarkAllUnread = false }) { Text("Cancel") } },
+        confirmButton = {
+            TextButton(onClick = { confirmMarkAllUnread = false; markAllRead(false) }) { Text("Mark all unread") }
         },
     )
 

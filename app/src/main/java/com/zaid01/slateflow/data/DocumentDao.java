@@ -19,4 +19,6 @@ public interface DocumentDao {
     void setRead(String uri, boolean isRead);
     @Query("UPDATE documents SET isRead = :isRead, progress = CASE WHEN :isRead = 1 THEN 1.0 ELSE 0.0 END WHERE folderUri = :folderUri")
     void setFolderRead(String folderUri, boolean isRead);
+    @Query("UPDATE documents SET isRead = :isRead, progress = CASE WHEN :isRead = 1 THEN 1.0 ELSE 0.0 END")
+    void setAllRead(boolean isRead);
 }

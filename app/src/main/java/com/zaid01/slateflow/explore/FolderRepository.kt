@@ -41,6 +41,10 @@ internal data class FolderSummary(val folders: Int = 0, val pdfs: Int = 0, val m
 /** Reads one directory per provider query; recursive discovery is owned by FolderScanner. */
 internal class FolderRepository(private val resolver: ContentResolver) {
     suspend fun root(uri: Uri): FolderLocation = withContext(Dispatchers.IO) {
+        if (uri.scheme == "file") {
+            val file = java.io.File(uri.path ?: "")
+            return@withContext FolderLocation(uri.toString(), file.name.ifEmpty { "Device storage" })
+        }
         val document = DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
         val name = resolver.query(document, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
@@ -50,6 +54,31 @@ internal class FolderRepository(private val resolver: ContentResolver) {
 
     suspend fun children(location: FolderLocation, sort: Boolean = true): List<FolderEntry> = withContext(Dispatchers.IO) {
         val parent = Uri.parse(location.uri)
+        if (parent.scheme == "file") {
+            val dir = java.io.File(parent.path ?: "")
+            if (!dir.exists() || !dir.isDirectory) return@withContext emptyList()
+            val list = dir.listFiles() ?: return@withContext emptyList()
+            val entries = mutableListOf<FolderEntry>()
+            for (child in list) {
+                currentCoroutineContext().ensureActive()
+                if (child.name.startsWith(".")) continue
+                val isDir = child.isDirectory
+                val kind = if (isDir) null else supportedKind(child.name, "")
+                if (isDir || kind != null) {
+                    entries += FolderEntry(
+                        uri = Uri.fromFile(child).toString(),
+                        name = child.name,
+                        isFolder = isDir,
+                        kind = kind,
+                        modifiedAt = child.lastModified(),
+                        size = if (isDir) 0 else child.length(),
+                        sizeKnown = !isDir
+                    )
+                }
+            }
+            if (!sort) return@withContext entries
+            return@withContext entries.sortedWith(compareByDescending<FolderEntry> { it.isFolder }.thenBy { it.name.lowercase(Locale.ROOT) })
+        }
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
         val columns = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
