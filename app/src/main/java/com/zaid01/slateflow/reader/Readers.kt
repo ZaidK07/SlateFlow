@@ -433,15 +433,6 @@ internal class MarkdownScroll(context: android.content.Context) : ScrollView(con
     }
 }
 
-private fun preprocessMarkdown(source: String): String {
-    // Transform GitHub alerts: > [!NOTE], > [!TIP], > [!WARNING], > [!IMPORTANT], > [!CAUTION]
-    // Clean minimal format without emojis: > **NOTE**
-    val alertRegex = Regex("""^>\s*\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]""", RegexOption.MULTILINE)
-    return alertRegex.replace(source) { match ->
-        val type = match.groupValues[1]
-        "> **$type**"
-    }
-}
 
 @Composable
 private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: SlateModel) {
@@ -469,11 +460,17 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
             .build()
     }
 
+    // A single worker prevents a formula-heavy chapter from creating dozens of render threads.
+    val mathExecutor = remember { java.util.concurrent.Executors.newSingleThreadExecutor() }
+    DisposableEffect(mathExecutor) {
+        onDispose { mathExecutor.shutdownNow() }
+    }
     val markwon: Markwon = remember(context, dark, color, accent, settings.font) {
         val density = context.resources.displayMetrics.density
         ru.noties.jlatexmath.JLatexMathAndroid.init(context.applicationContext)
         Markwon.builder(context)
             .usePlugin(MarkwonInlineParserPlugin.create())
+            .usePlugin(MarkdownMathPlugin())
             .usePlugin(TablePlugin.create(tableTheme))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TaskListPlugin.create(accent, if (dark) android.graphics.Color.GRAY else android.graphics.Color.LTGRAY, if (dark) android.graphics.Color.DKGRAY else android.graphics.Color.WHITE))
@@ -481,7 +478,13 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
             .usePlugin(LinkifyPlugin.create())
             .usePlugin(JLatexMathPlugin.create(settings.font * context.resources.displayMetrics.scaledDensity) { builder ->
                 builder.inlinesEnabled(true)
-                builder.errorHandler { _, _ -> null }
+                builder.executorService(mathExecutor)
+                builder.errorHandler { _, error ->
+                    android.util.Log.w("SlateFlowMath", "Could not render a math expression", error)
+                    // Keep the original expression readable when TeX is invalid or unsupported.
+                    null
+                }
+                builder.theme().textColor(color)
                 builder.theme().backgroundProvider { android.graphics.drawable.ColorDrawable(if (dark) android.graphics.Color.argb(40, 255, 255, 255) else android.graphics.Color.argb(20, 0, 0, 0)) }
             })
             .usePlugin(syntaxPlugin)
@@ -517,9 +520,9 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
             .build()
     }
 
-    var rendered by remember { mutableStateOf<CharSequence?>(null) }
-    var failure by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(doc.uri) {
+    var rendered by remember(doc.uri, markwon) { mutableStateOf<CharSequence?>(null) }
+    var failure by remember(doc.uri, markwon) { mutableStateOf<String?>(null) }
+    LaunchedEffect(doc.uri, markwon) {
         try {
             rendered = withContext(Dispatchers.Default) {
                 val source = withContext(Dispatchers.IO) {
@@ -529,8 +532,7 @@ private fun MarkdownReader(doc: Document, settings: ReaderSettings, model: Slate
                         bytes.toString(Charsets.UTF_8)
                     } ?: error("The file is unavailable. Select it again.")
                 }
-                val processed = preprocessMarkdown(source)
-                markwon.render(markwon.parse(processed))
+                markwon.render(markwon.parse(source))
             }
         } catch (e: CancellationException) { throw e }
         catch (exception: Exception) {

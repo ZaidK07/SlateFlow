@@ -40,6 +40,8 @@ internal fun ExploreScreen(
     var locations by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.path) { search = "" }
     val inFolder = state.path.isNotEmpty()
+    // Use the unfiltered index so onboarding stays hidden during searches or view changes.
+    val hasDiscoveredContent = state.folders.isNotEmpty() || state.files.isNotEmpty() || state.entries.isNotEmpty()
 
     val readUris = remember(recentDocuments) {
         recentDocuments.filter { it.isRead || it.progress >= 0.95f }.flatMap { listOf(it.uri, it.sourceUri) }.filter { it.isNotBlank() }.toSet()
@@ -97,7 +99,7 @@ internal fun ExploreScreen(
                     TextButton(onClick = { model.breadcrumb(-1) }) { AppIcon(AppSymbol.BACK); Spacer(Modifier.width(8.dp)); Text("All discovered folders") }
                     Text(state.path.last().name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    if (!state.hasStoragePermission) {
+                    if (!state.hasStoragePermission && !hasDiscoveredContent) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
@@ -156,7 +158,7 @@ internal fun ExploreScreen(
                     }
                 }
 
-                if (state.roots.isNotEmpty()) {
+                if (state.roots.isNotEmpty() || hasDiscoveredContent) {
                     OutlinedTextField(
                         search, { search = it }, modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text(if (inFolder) "Search this folder" else if (display.viewMode == ExploreViewMode.FILES) "Search files" else "Search folder names or paths") },
@@ -184,7 +186,7 @@ internal fun ExploreScreen(
                 Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) }
             }
             !inFolder && display.viewMode == ExploreViewMode.FILES -> {
-                if (state.roots.isEmpty()) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                if (state.roots.isEmpty() && !hasDiscoveredContent) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                     ExploreEmpty("Discover your reading files", "Choose a location to find every PDF and Markdown document.", addFolder)
                 } else if (allFiles.isEmpty() && !state.scanning) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                     ExploreEmpty("No matching files", if (search.isNotBlank() || filter != FileFilter.ALL || display.onlyUnread) "Try adjusting your search or unread filter." else "No files found. Add another location or refresh.")
@@ -202,7 +204,7 @@ internal fun ExploreScreen(
                 }
             }
             !inFolder -> {
-                if (state.roots.isEmpty()) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                if (state.roots.isEmpty() && !hasDiscoveredContent) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                     ExploreEmpty("Discover your reading folders", "Choose a location. We’ll find every PDF and Markdown folder inside it, including nested folders.", addFolder)
                 } else if (folders.isEmpty() && !state.scanning) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                     ExploreEmpty("No matching folders", if (search.isNotBlank() || filter != FileFilter.ALL || display.onlyUnread) "Try a different search or filter." else "No PDFs or Markdown files found. Add another location or refresh.")

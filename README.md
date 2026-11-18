@@ -1,12 +1,12 @@
-# SlateFlow 1.3.1
+# SlateFlow 1.3.3
 
 A local PDF and Markdown reader for Android 14+, built with Kotlin and Jetpack Compose for phones and tablets.
 
 ## Appearance and navigation
 
-Nexus brings cool neutral surfaces, blue details, green actions, rounded controls, and bundled Inter typography. Choose Light, Dark, or System in Settings, with optional Android wallpaper accents. The launcher icon uses the same blue, white, and green palette. Inter's license is bundled in `assets/licenses/Inter-OFL.txt`.
+Nexus brings cool neutral surfaces, blue details, green actions, rounded controls, and bundled Inter typography. Choose Light, Dark, or System in Settings, with optional Android wallpaper accents. The launcher icon and compact home-header book badge use the same blue, white, and green palette. Inter's license is bundled in `assets/licenses/Inter-OFL.txt`.
 
-Phones use Dashboard and Explore bottom tabs. Wider windows use a compact navigation rail. Readers use one PDF page per row in portrait and two in expanded landscape windows.
+Phones use Dashboard, Explore, and History bottom tabs. Wider windows use a compact navigation rail. Readers use one PDF page per row in portrait and two in expanded landscape windows.
 
 ## Dashboard
 
@@ -22,13 +22,15 @@ Scanning runs off the main thread, one metadata query per unique directory, with
 
 Unreadable folders are skipped and reported; valid siblings remain visible. Refresh rescans and retries location access. Traversal is bounded to 20,000 directories and 20,000 entries per directory for low-memory devices; limits are reported rather than claiming a complete scan. The index is scoped to the exact granted locations. Interrupted cache writes preserve the previous snapshot, and removed/inaccessible grants are filtered out.
 
+Explore hides its discovery onboarding as soon as the unfiltered index contains a folder or file, including automatic storage results with no manually selected locations. Search/filter controls remain available for those results.
+
 Manage grants under **Scan locations**. Removing one hides its indexed folders without deleting files; permission is retained for previously opened reading-history documents. Android restricts which storage roots can be selected, so add each accessible location you want to scan. Missing, moved, or inaccessible documents show a “File not found” dialog with Lucide check/minus icons, matching PracticeFlow’s icon set. OK preserves the history entry; Remove deletes only that entry, never the original file. Lucide’s license is bundled under `assets/licenses/`.
 
 ## Reading and memory
 
 Both readers place their fading scroll indicator at the outer right edge, clear of the reading content. Markdown margins are applied to the text inside the full-width scroll view. PDF has a separate indicator gutter and a page scrubber.
 
-Markdown supports headings, lists, links, code blocks, tables, and strikethrough. Parsing runs off the main thread. Embedded remote/relative images are not loaded. Files larger than 12 MiB are rejected to bound memory use. PDFium renders the original PDF content and exposes its real text geometry on Android 14+, without requiring newer system PDF extensions. Long-press text to select a word, drag the selection or its handles, and use Copy or Select page. PDF tools also provide on-demand text search. Mixed text/image layouts remain intact. Image-only scans have no selectable text unless their PDF already contains an OCR layer; OCR is not bundled.
+Markdown supports headings, lists, links, highlighted code blocks, tables, task lists, strikethrough, and GitHub alert labels. Native math supports `$…$`, `$$…$$`, `\(…\)`, `\[…\]`, separate-line `$$` display blocks, and fenced `math`, `latex`, or `tex` blocks. Display formulas also work inside lists and quotes. Code spans/ordinary code fences, escaped delimiters, and ordinary currency text retain their literal meaning. Dollar-delimited inline math requires non-whitespace content boundaries and does not cross a newline; failed inline delimiter searches are capped at 16,384 characters. Math uses the existing JLatexMath engine rather than a full TeX installation: invalid expressions or unsupported commands remain readable as source and generate a diagnostic log. Parsing runs off the main thread. A single lifecycle-managed worker renders formulas without spawning one thread per expression, and formula text follows the reader theme and font size. No dependencies were added for this compatibility work. Embedded remote/relative images are not loaded. Files larger than 12 MiB are rejected to bound memory use. PDFium renders the original PDF content and exposes its real text geometry on Android 14+, without requiring newer system PDF extensions. Long-press text to select a word, drag the selection or its handles, and use Copy or Select page. PDF tools also provide on-demand text search. Mixed text/image layouts remain intact. Image-only scans have no selectable text unless their PDF already contains an OCR layer; OCR is not bundled.
 
 Pages are capped around 4 MiB, and the cache holds at most three bitmaps and 12 MiB. Text is opened only on selection/search, with at most one native text page retained. Search cancels on query changes and checks pages sequentially. Selections over 100,000 characters report a limit to protect clipboard and memory usage. Live UI bitmaps are never manually recycled. Native binaries are compressed in the universal APK, and Android extracts only the device's ABI. PDFium/PdfiumAndroid license notices are bundled under `assets/licenses/`.
 
@@ -53,6 +55,6 @@ Use Android Studio's configured SDK/JDK, or run:
 
 Tests cover recursive discovery through 1,500 nested levels, empty/intermediate folders, overlapping roots, cycles, cancellation, unreadable branches, scan limits, size totals, filtering/sorting, persistent and interrupted cache writes, history migration, reading positions, bounded PDF rendering, navigation, themes, Explore controls, mixed-content PDF selection/search, actual long-press-to-copy interaction, missing-file recovery without deleting original files, and reset confirmation/cancellation. Test documents are synthetic and installed only with the instrumentation APK.
 
-Release builds enable R8/resource shrinking; release signing is not configured. The installable development APK is `app/build/outputs/apk/debug/app-debug.apk`. For local delivery, the optimized release APK can be signed with the same development key; the current packaged build is `app/build/outputs/apk/release/SlateFlow-1.3.1.apk`. Version 1.3.1 uses version code 5 and can update the previous debug-signed installations without clearing its data. A device-generated Baseline Profile and Macrobenchmark remain future performance work.
+Release builds enable R8/resource shrinking; local release builds use the existing development signing key. The installable development APK is `app/build/outputs/apk/debug/app-debug.apk`. For local delivery, the optimized release APK can be signed with the same development key; the current packaged build is `app/build/outputs/apk/release/SlateFlow-1.3.3.apk`. Version 1.3.3 uses version code 7 and can update the previous debug-signed installations without clearing its data. A device-generated Baseline Profile and Macrobenchmark remain future performance work.
 
 Release verification: run `python3 scripts/check-release-startup.py SIGNED_APK` with a connected device. This installs over existing data and checks that the actual signed release remains alive and visible after startup. Release builds use standard whole-program R8 optimization; partial package-scoped optimization caused a Kotlin class-access crash in 1.2 and has been removed.

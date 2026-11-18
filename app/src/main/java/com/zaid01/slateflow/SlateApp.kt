@@ -9,6 +9,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.*
 import androidx.compose.material3.windowsizeclass.*
 import androidx.compose.runtime.*
@@ -112,9 +116,20 @@ fun SlateApp(model: SlateModel, settings: ReaderSettings) {
                 AnimatedVisibility(!focused, enter = fadeIn(tween(180)), exit = fadeOut(tween(180))) {
                     TopAppBar(
                         title = {
-                            Column {
-                                Text(document?.name ?: "SlateFlow", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
-                                if (document == null) Text(tab.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                if (document == null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = androidx.compose.ui.graphics.Color(0xFF0A6EBD),
+                                        shadowElevation = 2.dp,
+                                    ) {
+                                        Image(painterResource(R.drawable.ic_slateflow_brand), contentDescription = null, modifier = Modifier.size(44.dp))
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(document?.name ?: "SlateFlow", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                                    if (document == null) Text(tab.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         },
                         navigationIcon = {
